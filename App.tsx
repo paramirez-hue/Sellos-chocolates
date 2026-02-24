@@ -782,10 +782,15 @@ export default function App() {
   };
 
   const handleUpdateCity = async (oldCity: string, newCity: string) => { 
-    // This is complex, for now we just update locally and the user would need to update the DB manually or we implement a bulk update
-    setCities(cities.map(c => c.toUpperCase() === oldCity.toUpperCase() ? newCity.toUpperCase() : c.toUpperCase())); 
-    setUsers(users.map(u => u.city?.toUpperCase() === oldCity.toUpperCase() ? { ...u, city: newCity.toUpperCase() } : u)); 
-    setSeals(seals.map(s => s.city?.toUpperCase() === oldCity.toUpperCase() ? { ...s, city: newCity.toUpperCase() } : s)); 
+    const success = await ApiService.updateCity(oldCity.toUpperCase(), newCity.toUpperCase());
+    if (success) {
+      setCities(cities.map(c => c.toUpperCase() === oldCity.toUpperCase() ? newCity.toUpperCase() : c.toUpperCase())); 
+      setUsers(users.map(u => u.city?.toUpperCase() === oldCity.toUpperCase() ? { ...u, city: newCity.toUpperCase() } : u)); 
+      setSeals(seals.map(s => s.city?.toUpperCase() === oldCity.toUpperCase() ? { ...s, city: newCity.toUpperCase() } : s)); 
+      setToast({message: "Ciudad y registros actualizados", type: 'success'});
+    } else {
+      setToast({message: "Error al actualizar ciudad en el servidor", type: 'error'});
+    }
   };
   
   const checkSealDuplicate = (id: string, type: string) => seals.some(s => s.id.toUpperCase() === id.toUpperCase() && s.type.toUpperCase() === type.toUpperCase());
@@ -928,6 +933,21 @@ export default function App() {
     setTargetStatus(null); 
   };
 
+  const handleDownloadBackup = async () => {
+    const data = await ApiService.getBackup();
+    if (data) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `backup_sellos_cnch_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      setToast({message: "Copia de seguridad descargada", type: 'success'});
+    } else {
+      setToast({message: "Error al generar copia de seguridad", type: 'error'});
+    }
+  };
+
   if (!currentUser) return <LoginScreen onLogin={handleLogin} users={users} settings={appSettings} />;
 
   return (
@@ -942,7 +962,7 @@ export default function App() {
           {activeTab === 'traceability' && <TraceabilityView seals={seals} user={currentUser} />}
           {activeTab === 'users' && currentUser.role === UserRole.ADMIN && <UserManagement users={users} cities={cities} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
           {activeTab === 'cities' && currentUser.role === UserRole.ADMIN && <CityManagement cities={cities} onAddCity={handleAddCity} onDeleteCity={handleDeleteCity} onUpdateCity={handleUpdateCity} />}
-          {activeTab === 'settings' && currentUser.role === UserRole.ADMIN && <SettingsView settings={appSettings} onUpdate={handleUpdateSettings} onRestoreDB={() => alert('Función deshabilitada en modo servidor')} />}
+          {activeTab === 'settings' && currentUser.role === UserRole.ADMIN && <SettingsView settings={appSettings} onUpdate={handleUpdateSettings} onRestoreDB={handleDownloadBackup} />}
         </div>
       </main>
 

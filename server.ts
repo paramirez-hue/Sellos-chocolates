@@ -125,6 +125,46 @@ async function startServer() {
       res.status(500).json({ error: err.message });
     }
   });
+
+  app.put("/api/cities/update", (req, res) => {
+    const { oldCity, newCity } = req.body;
+    try {
+      const transaction = db.transaction(() => {
+        db.prepare("INSERT OR IGNORE INTO cities (name) VALUES (?)").run(newCity);
+        db.prepare("UPDATE users SET city = ? WHERE city = ?").run(newCity, oldCity);
+        db.prepare("UPDATE seals SET city = ? WHERE city = ?").run(newCity, oldCity);
+        db.prepare("DELETE FROM cities WHERE name = ?").run(oldCity);
+      });
+      transaction();
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/backup", (req, res) => {
+    try {
+      const seals = db.prepare("SELECT * FROM seals").all();
+      const users = db.prepare("SELECT * FROM users").all();
+      const cities = db.prepare("SELECT * FROM cities").all();
+      const settings: any = db.prepare("SELECT * FROM settings WHERE id = 1").get();
+      
+      const fullSeals = seals.map((s: any) => ({
+        ...s,
+        history: db.prepare("SELECT * FROM history WHERE sealId = ?").all(s.id)
+      }));
+
+      res.json({
+        seals: fullSeals,
+        users,
+        cities: cities.map((c: any) => c.name),
+        settings: settings ? { ...settings, sealTypes: JSON.parse(settings.sealTypes) } : null
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/seals", (req, res) => {
     const seals = db.prepare("SELECT * FROM seals").all();
     const sealsWithHistory = seals.map((s: any) => {

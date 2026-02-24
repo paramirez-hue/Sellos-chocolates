@@ -127,11 +127,33 @@ export const ApiService = {
     }
   },
 
+  async updateCity(oldCity: string, newCity: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/cities/update`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldCity, newCity }),
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  },
+
   // --- CONFIGURACIÓN ---
   async getSettings(): Promise<AppSettings | null> {
     try {
       const response = await fetch(`${API_BASE_URL}/settings`);
       if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  },
+
+  async getBackup(): Promise<any> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/backup`);
       return await response.json();
     } catch {
       return null;
