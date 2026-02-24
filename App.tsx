@@ -4,7 +4,7 @@ import { ICONS, MOCK_DATA, MOCK_USERS } from './constants';
 import { Seal, SealStatus, FilterOptions, MovementHistory, User, UserRole, AppSettings } from './types';
 import * as XLSX from 'xlsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { ApiService } from './services/api';
+import { ApiService } from './src/services/api';
 
 // --- HELPERS ---
 
