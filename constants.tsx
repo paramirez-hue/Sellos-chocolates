@@ -101,9 +101,9 @@ export const ICONS = {
 };
 
 export const MOCK_USERS: User[] = [
-  { id: '1', username: 'admin', fullName: 'Administrador Maestro', password: 'admin', role: UserRole.ADMIN, organization: 'SelloMaster Global', city: 'Bogotá' },
-  { id: '2', username: 'gestor_medellin', fullName: 'Carlos Medellin', password: 'admin', role: UserRole.GESTOR, organization: 'SelloMaster Global', city: 'Medellín' },
-  { id: '3', username: 'gestor_bogota', fullName: 'Juan Bogota', password: 'admin', role: UserRole.GESTOR, organization: 'SelloMaster Global', city: 'Bogotá' },
+  { id: '1', username: 'admin', fullName: 'Administrador Maestro', password: 'admin', role: UserRole.ADMIN, organization: 'Organización Global de Sellos', city: 'Bogotá' },
+  { id: '2', username: 'gestor_medellin', fullName: 'Carlos Medellin', password: 'admin', role: UserRole.GESTOR, organization: 'Organización Global de Sellos', city: 'Medellín' },
+  { id: '3', username: 'gestor_bogota', fullName: 'Juan Bogota', password: 'admin', role: UserRole.GESTOR, organization: 'Organización Global de Sellos', city: 'Bogotá' },
 ];
 
 export const MOCK_DATA: Seal[] = [

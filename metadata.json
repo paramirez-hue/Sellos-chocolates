@@ -1,6 +1,6 @@
 {
-  "name": "App sellos ",
-  "description": "Sistema avanzado para el manejo y control de inventario de precintos de seguridad (sellos)",
+  "name": "Gestión de Sellos CNCH",
+  "description": "Sistema avanzado para el manejo y control de inventario de precintos de seguridad para Compañia Nacional de Chocolates",
   "requestFramePermissions": [
     "camera"
   ]
