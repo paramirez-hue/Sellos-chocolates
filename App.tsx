@@ -4,7 +4,6 @@ import { ICONS, MOCK_DATA, MOCK_USERS } from './constants';
 import { Seal, SealStatus, FilterOptions, MovementHistory, User, UserRole, AppSettings } from './types';
 import * as XLSX from 'xlsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
-import { ApiService } from './src/services/api';
 
 // --- HELPERS ---
 
@@ -306,7 +305,7 @@ const SettingsView: React.FC<{
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `CNCH_Backup_${new Date().toLocaleDateString()}.json`;
+    link.download = `SelloMaster_Backup_${new Date().toLocaleDateString()}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -520,7 +519,7 @@ const UserManagement: React.FC<{
     if (!formData.username || !formData.password) return alert('Usuario y contraseña obligatorios');
     if (editingUser) onUpdateUser({ ...editingUser, ...formData });
     else {
-      const u: User = { ...formData, id: Math.random().toString(36).substr(2, 9), organization: 'Compañia Nacional de Chocolates' };
+      const u: User = { ...formData, id: Math.random().toString(36).substr(2, 9), organization: 'SelloMaster Group' };
       onAddUser(u);
     }
     setIsModalOpen(false); setEditingUser(null);
@@ -707,7 +706,7 @@ export default function App() {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [isDeleteModeActive, setIsDeleteModeActive] = useState(false);
   
-  const [appSettings, setAppSettings] = useState<AppSettings>({ title: 'GESTION DE SELLOS CNCH', logo: 'https://chocolates.com.co/wp-content/uploads/2021/04/logo-cnch.png', sealTypes: ['Botella', 'Cable', 'Plástico', 'Metálico'], themeColor: '#003594' });
+  const [appSettings, setAppSettings] = useState<AppSettings>({ title: 'SelloMaster Pro', logo: null, sealTypes: ['Botella', 'Cable', 'Plástico', 'Metálico'], themeColor: '#003594' });
   const fileExcelRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -719,104 +718,59 @@ export default function App() {
   }, [appSettings.themeColor]);
 
   useEffect(() => {
-    const loadData = async () => {
-      const savedUser = localStorage.getItem('selloUser');
-      if (savedUser) setCurrentUser(JSON.parse(savedUser));
-
-      const [dbSeals, dbUsers, dbCities, dbSettings] = await Promise.all([
-        ApiService.getSeals(),
-        ApiService.getUsers(),
-        ApiService.getCities(),
-        ApiService.getSettings()
-      ]);
-
-      if (dbSettings) setAppSettings(dbSettings);
-      if (dbCities && dbCities.length > 0) setCities(dbCities);
-      
-      setSeals(dbSeals || []);
-      setUsers(dbUsers || []);
-    };
-    loadData();
+    const savedUser = localStorage.getItem('selloUser');
+    const savedSettings = localStorage.getItem('selloSettings');
+    const savedSeals = localStorage.getItem('selloData');
+    const savedUsers = localStorage.getItem('selloUsers');
+    const savedCities = localStorage.getItem('selloCities');
+    if (savedSettings) setAppSettings(JSON.parse(savedSettings));
+    if (savedCities) setCities(JSON.parse(savedCities));
+    setSeals(savedSeals ? JSON.parse(savedSeals) : MOCK_DATA);
+    setUsers(savedUsers ? JSON.parse(savedUsers) : MOCK_USERS);
+    if (savedUser) setCurrentUser(JSON.parse(savedUser));
   }, []);
 
+  useEffect(() => { if (seals.length > 0) localStorage.setItem('selloData', JSON.stringify(seals)); }, [seals]);
+  useEffect(() => { if (users.length > 0) localStorage.setItem('selloUsers', JSON.stringify(users)); }, [users]);
+  useEffect(() => { localStorage.setItem('selloCities', JSON.stringify(cities)); }, [cities]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); } }, [toast]);
+
+  const handleRestoreDB = (data: any) => {
+    if (data.seals) localStorage.setItem('selloData', JSON.stringify(data.seals));
+    if (data.users) localStorage.setItem('selloUsers', JSON.stringify(data.users));
+    if (data.cities) localStorage.setItem('selloCities', JSON.stringify(data.cities));
+    if (data.settings) localStorage.setItem('selloSettings', JSON.stringify(data.settings));
+  };
 
   const handleLogin = (u: User) => { setCurrentUser(u); localStorage.setItem('selloUser', JSON.stringify(u)); setIsSearchPerformed(false); setFilteredSeals([]); };
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('selloUser'); setActiveTab('dashboard'); setIsSearchPerformed(false); setIsDeleteModeActive(false); };
-  
-  const handleUpdateSettings = async (s: AppSettings) => { 
-    const success = await ApiService.saveSettings(s);
-    if (success) setAppSettings(s); 
-  };
-
-  const handleAddUser = async (u: User) => {
-    const success = await ApiService.saveUser(u);
-    if (success) setUsers([...users, u]);
-  };
-
-  const handleUpdateUser = async (updatedUser: User) => { 
-    const success = await ApiService.saveUser(updatedUser);
-    if (success) {
-      setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u)); 
-      if (currentUser?.id === updatedUser.id) { 
-        setCurrentUser(updatedUser); 
-        localStorage.setItem('selloUser', JSON.stringify(updatedUser)); 
-      } 
-    }
-  };
-
-  const handleDeleteUser = async (id: string) => {
-    const success = await ApiService.deleteUser(id);
-    if (success) setUsers(users.filter(u => u.id !== id));
-  };
-
-  const handleAddCity = async (city: string) => {
-    const success = await ApiService.addCity(city.toUpperCase());
-    if (success) setCities([...cities, city.toUpperCase()]);
-  };
-
-  const handleDeleteCity = async (city: string) => { 
-    if (users.some(u => u.city?.toUpperCase() === city.toUpperCase())) return alert('No se puede eliminar una ciudad que tiene usuarios asociados.'); 
-    const success = await ApiService.deleteCity(city.toUpperCase());
-    if (success) setCities(cities.filter(c => c.toUpperCase() !== city.toUpperCase())); 
-  };
-
-  const handleUpdateCity = async (oldCity: string, newCity: string) => { 
-    const success = await ApiService.updateCity(oldCity.toUpperCase(), newCity.toUpperCase());
-    if (success) {
-      setCities(cities.map(c => c.toUpperCase() === oldCity.toUpperCase() ? newCity.toUpperCase() : c.toUpperCase())); 
-      setUsers(users.map(u => u.city?.toUpperCase() === oldCity.toUpperCase() ? { ...u, city: newCity.toUpperCase() } : u)); 
-      setSeals(seals.map(s => s.city?.toUpperCase() === oldCity.toUpperCase() ? { ...s, city: newCity.toUpperCase() } : s)); 
-      setToast({message: "Ciudad y registros actualizados", type: 'success'});
-    } else {
-      setToast({message: "Error al actualizar ciudad en el servidor", type: 'error'});
-    }
+  const handleUpdateSettings = (s: AppSettings) => { setAppSettings(s); localStorage.setItem('selloSettings', JSON.stringify(s)); };
+  const handleAddUser = (u: User) => setUsers([...users, u]);
+  const handleUpdateUser = (updatedUser: User) => { setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u)); if (currentUser?.id === updatedUser.id) { setCurrentUser(updatedUser); localStorage.setItem('selloUser', JSON.stringify(updatedUser)); } };
+  const handleDeleteUser = (id: string) => setUsers(users.filter(u => u.id !== id));
+  const handleAddCity = (city: string) => setCities([...cities, city.toUpperCase()]);
+  const handleDeleteCity = (city: string) => { if (users.some(u => u.city?.toUpperCase() === city.toUpperCase())) return alert('No se puede eliminar una ciudad que tiene usuarios asociados.'); setCities(cities.filter(c => c.toUpperCase() !== city.toUpperCase())); };
+  const handleUpdateCity = (oldCity: string, newCity: string) => { 
+    setCities(cities.map(c => c.toUpperCase() === oldCity.toUpperCase() ? newCity.toUpperCase() : c.toUpperCase())); 
+    setUsers(users.map(u => u.city?.toUpperCase() === oldCity.toUpperCase() ? { ...u, city: newCity.toUpperCase() } : u)); 
+    setSeals(seals.map(s => s.city?.toUpperCase() === oldCity.toUpperCase() ? { ...s, city: newCity.toUpperCase() } : s)); 
   };
   
   const checkSealDuplicate = (id: string, type: string) => seals.some(s => s.id.toUpperCase() === id.toUpperCase() && s.type.toUpperCase() === type.toUpperCase());
   
-  const handleAddSeal = async (s: Seal) => { 
+  const handleAddSeal = (s: Seal) => { 
     if (checkSealDuplicate(s.id, s.type)) { setToast({message: "Sello ya existe, favor verificar", type: 'error'}); return false; } 
     const sealWithCity = { ...s, city: currentUser?.city.toUpperCase() || 'SEDE CENTRAL' }; 
-    const success = await ApiService.createSeal(sealWithCity);
-    if (success) {
-      setSeals([sealWithCity, ...seals]); 
-      return true; 
-    }
-    return false;
+    setSeals([sealWithCity, ...seals]); 
+    return true; 
   };
 
-  const handleDeleteSeal = async (id: string) => { 
+  const handleDeleteSeal = (id: string) => { 
     if (window.confirm(`¿Está seguro de eliminar permanentemente el sello ${id}? Esta acción no se puede deshacer.`)) { 
-      const success = await ApiService.deleteSeal(id);
-      if (success) {
-        const updatedSeals = seals.filter(s => s.id.toUpperCase() !== id.toUpperCase()); 
-        setSeals(updatedSeals); 
-        if (isSearchPerformed) setFilteredSeals(filteredSeals.filter(s => s.id.toUpperCase() !== id.toUpperCase())); 
-        setToast({message: "Sello eliminado con éxito", type: 'success'}); 
-      } else {
-        setToast({message: "Error al eliminar sello del servidor", type: 'error'});
-      }
+      const updatedSeals = seals.filter(s => s.id.toUpperCase() !== id.toUpperCase()); 
+      setSeals(updatedSeals); 
+      if (isSearchPerformed) setFilteredSeals(filteredSeals.filter(s => s.id.toUpperCase() !== id.toUpperCase())); 
+      setToast({message: "Sello eliminado con éxito", type: 'success'}); 
     } 
   };
 
@@ -824,7 +778,7 @@ export default function App() {
     const exportData = (isSearchPerformed ? filteredSeals : seals)
       .filter(s => s.city?.toUpperCase() === currentUser?.city.toUpperCase())
       .map(s => ({ ID: s.id, Estado: s.status, Tipo: s.type, "Fecha Alta": s.creationDate, "Último Movimiento": s.lastMovement, Operador: s.entryUser })); 
-    exportToExcel(exportData, `Inventario_CNCH_${currentUser?.city}`); 
+    exportToExcel(exportData, `Inventario_SelloMaster_${currentUser?.city}`); 
   };
 
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => { 
@@ -904,48 +858,25 @@ export default function App() {
     
     const now = new Date().toLocaleString('es-ES'); 
     const selectedIds = selectedSeals.map(s => s.id.toUpperCase()); 
-    
-    ApiService.updateSealStatus(selectedIds, targetStatus, details, currentUser?.fullName || 'SISTEMA').then(success => {
-      if (success) {
-        const updated = seals.map(s => { 
-          if (selectedIds.includes(s.id.toUpperCase())) return { 
-            ...s, 
-            status: targetStatus!, 
-            lastMovement: now, 
-            entryUser: currentUser?.fullName || 'SISTEMA', 
-            history: [{ date: now, fromStatus: s.status, toStatus: targetStatus!, user: currentUser?.fullName || 'SISTEMA', details: selectedSeals.length > 1 ? `[MASIVO] ${details}` : details }, ...s.history] 
-          }; 
-          return s; 
-        }); 
-        setSeals(updated); 
-        if (isSearchPerformed) setFilteredSeals(prev => prev.map(s => { 
-          const match = updated.find(u => u.id.toUpperCase() === s.id.toUpperCase()); 
-          return match ? match : s; 
-        })); 
-        setToast({message: "Movimiento procesado correctamente", type: 'success'}); 
-      } else {
-        setToast({message: "Error al procesar movimiento en el servidor", type: 'error'});
-      }
-    });
-
+    const updated = seals.map(s => { 
+      if (selectedIds.includes(s.id.toUpperCase())) return { 
+        ...s, 
+        status: targetStatus, 
+        lastMovement: now, 
+        entryUser: currentUser?.fullName || 'SISTEMA', 
+        history: [{ date: now, fromStatus: s.status, toStatus: targetStatus, user: currentUser?.fullName || 'SISTEMA', details: selectedSeals.length > 1 ? `[MASIVO] ${details}` : details }, ...s.history] 
+      }; 
+      return s; 
+    }); 
+    setSeals(updated); 
+    if (isSearchPerformed) setFilteredSeals(prev => prev.map(s => { 
+      const match = updated.find(u => u.id.toUpperCase() === s.id.toUpperCase()); 
+      return match ? match : s; 
+    })); 
     setIsMoveFormOpen(false); 
     setSelectedSeals([]); 
     setTargetStatus(null); 
-  };
-
-  const handleDownloadBackup = async () => {
-    const data = await ApiService.getBackup();
-    if (data) {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `backup_sellos_cnch_${new Date().toISOString().split('T')[0]}.json`;
-      a.click();
-      setToast({message: "Copia de seguridad descargada", type: 'success'});
-    } else {
-      setToast({message: "Error al generar copia de seguridad", type: 'error'});
-    }
+    setToast({message: "Movimiento procesado correctamente", type: 'success'}); 
   };
 
   if (!currentUser) return <LoginScreen onLogin={handleLogin} users={users} settings={appSettings} />;
@@ -962,12 +893,12 @@ export default function App() {
           {activeTab === 'traceability' && <TraceabilityView seals={seals} user={currentUser} />}
           {activeTab === 'users' && currentUser.role === UserRole.ADMIN && <UserManagement users={users} cities={cities} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
           {activeTab === 'cities' && currentUser.role === UserRole.ADMIN && <CityManagement cities={cities} onAddCity={handleAddCity} onDeleteCity={handleDeleteCity} onUpdateCity={handleUpdateCity} />}
-          {activeTab === 'settings' && currentUser.role === UserRole.ADMIN && <SettingsView settings={appSettings} onUpdate={handleUpdateSettings} onRestoreDB={handleDownloadBackup} />}
+          {activeTab === 'settings' && currentUser.role === UserRole.ADMIN && <SettingsView settings={appSettings} onUpdate={handleUpdateSettings} onRestoreDB={handleRestoreDB} />}
         </div>
       </main>
 
       {/* Modal Alta Precinto */}
-      {isNewSealModalOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-sm overflow-hidden border border-slate-200"><div className="bg-custom-blue px-6 py-5 text-white font-black text-xs uppercase tracking-widest">Nuevo Precinto - {currentUser.city}</div><div className="p-8 space-y-6"><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">ID Precinto</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-3.5 text-sm font-mono font-bold text-custom-blue outline-none uppercase" placeholder="Ej: BOG-4432" id="new-seal-id" /></div><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Tipo</label><select className="w-full border border-slate-200 bg-slate-50 rounded-xl p-3.5 text-sm font-bold text-custom-blue outline-none appearance-none" id="new-seal-type">{appSettings.sealTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div><div className="flex gap-4 pt-6"><button onClick={() => setIsNewSealModalOpen(false)} className="flex-1 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cancelar</button><button onClick={async () => { const idEl = document.getElementById('new-seal-id') as HTMLInputElement; const typeEl = document.getElementById('new-seal-type') as HTMLSelectElement; const id = idEl.value.toUpperCase(); const type = typeEl.value; if (!id) return alert('ID obligatorio'); const now = new Date().toLocaleString('es-ES'); const success = await handleAddSeal({ id, type, status: SealStatus.ENTRADA_INVENTARIO, creationDate: now, lastMovement: now, entryUser: currentUser.fullName, orderNumber: '-', containerId: '-', notes: 'Alta Sede', city: currentUser.city.toUpperCase(), history: [{ date: now, fromStatus: null, toStatus: SealStatus.ENTRADA_INVENTARIO, user: currentUser.fullName, details: `Alta inicial en ${currentUser.city}` }] }); if (success) { setIsNewSealModalOpen(false); setToast({message: "PRECINTO REGISTRADO", type: 'success'}); } }} className="flex-1 bg-custom-blue text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-xl hover:bg-black">Registrar</button></div></div></div></div>}
+      {isNewSealModalOpen && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-sm overflow-hidden border border-slate-200"><div className="bg-custom-blue px-6 py-5 text-white font-black text-xs uppercase tracking-widest">Nuevo Precinto - {currentUser.city}</div><div className="p-8 space-y-6"><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">ID Precinto</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl p-3.5 text-sm font-mono font-bold text-custom-blue outline-none uppercase" placeholder="Ej: BOG-4432" id="new-seal-id" /></div><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Tipo</label><select className="w-full border border-slate-200 bg-slate-50 rounded-xl p-3.5 text-sm font-bold text-custom-blue outline-none appearance-none" id="new-seal-type">{appSettings.sealTypes.map(t => <option key={t} value={t}>{t}</option>)}</select></div><div className="flex gap-4 pt-6"><button onClick={() => setIsNewSealModalOpen(false)} className="flex-1 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cancelar</button><button onClick={() => { const idEl = document.getElementById('new-seal-id') as HTMLInputElement; const typeEl = document.getElementById('new-seal-type') as HTMLSelectElement; const id = idEl.value.toUpperCase(); const type = typeEl.value; if (!id) return alert('ID obligatorio'); const now = new Date().toLocaleString('es-ES'); const success = handleAddSeal({ id, type, status: SealStatus.ENTRADA_INVENTARIO, creationDate: now, lastMovement: now, entryUser: currentUser.fullName, orderNumber: '-', containerId: '-', notes: 'Alta Sede', city: currentUser.city.toUpperCase(), history: [{ date: now, fromStatus: null, toStatus: SealStatus.ENTRADA_INVENTARIO, user: currentUser.fullName, details: `Alta inicial en ${currentUser.city}` }] }); if (success) { setIsNewSealModalOpen(false); setToast({message: "PRECINTO REGISTRADO", type: 'success'}); } }} className="flex-1 bg-custom-blue text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-xl hover:bg-black">Registrar</button></div></div></div></div>}
 
       {/* Modal de Movimiento */}
       {isMoveFormOpen && selectedSeals.length > 0 && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"><div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg border border-gray-200 overflow-hidden animate-in zoom-in duration-200"><div className="bg-custom-blue px-8 py-5 flex justify-between items-center text-white"><h3 className="text-[10px] font-black uppercase tracking-widest">{selectedSeals.length > 1 ? `GESTIÓN MASIVA: ${selectedSeals.length} UNIDADES` : `GESTIONAR: ${selectedSeals[0].id}`}</h3><button onClick={() => setIsMoveFormOpen(false)}>✕</button></div><div className="p-8 space-y-6">{targetStatus === selectedSeals[0].status ? <div className="space-y-4 text-center"><p className={`text-[10px] font-black uppercase tracking-widest ${getStatusTextColor(selectedSeals[0].status)}`}>Estado Actual: {selectedSeals[0].status.replace('_', ' ')}</p><div className="grid grid-cols-1 gap-2">{(selectedSeals[0].status === SealStatus.ENTRADA_INVENTARIO || selectedSeals[0].status === SealStatus.NO_INSTALADO) && <button onClick={() => setTargetStatus(SealStatus.ASIGNADO)} className="bg-sky-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Asignado</button>}{selectedSeals[0].status === SealStatus.ASIGNADO && <button onClick={() => setTargetStatus(SealStatus.ENTREGADO)} className="bg-amber-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Entregado</button>}{selectedSeals[0].status === SealStatus.ENTREGADO && (<><button onClick={() => setTargetStatus(SealStatus.INSTALADO)} className="bg-orange-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Instalado</button><button onClick={() => setTargetStatus(SealStatus.NO_INSTALADO)} className="bg-stone-500 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Reportar No Instalado</button></>)}{selectedSeals[0].status === SealStatus.INSTALADO && <button onClick={() => setTargetStatus(SealStatus.SALIDA_FABRICA)} className="bg-gray-500 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Salida</button>}<button onClick={() => setTargetStatus(SealStatus.DESTRUIDO)} className="bg-red-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Destruido</button></div></div> : <div className="space-y-6"><div className="flex items-center justify-center gap-3 bg-slate-50 p-4 rounded-xl"><span className={`text-[9px] font-black uppercase px-2 py-1 rounded border ${getStatusStyles(selectedSeals[0].status).split('icon-bg-')[0]}`}>{selectedSeals[0].status.replace('_', ' ')}</span><ICONS.ArrowRightTiny className="text-slate-300" /><span className={`text-[9px] font-black uppercase px-2 py-1 rounded border shadow-sm ${targetStatus ? getStatusStyles(targetStatus).split('icon-bg-')[0] : ''}`}>{targetStatus?.replace('_', ' ')}</span></div><div className="max-h-[45vh] overflow-y-auto pr-2 space-y-4 custom-scrollbar">{(targetStatus === SealStatus.ASIGNADO || targetStatus === SealStatus.ENTREGADO) ? <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Usuario Receptor:</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none uppercase" value={moveData.requester} onChange={e => setMoveData({...moveData, requester: e.target.value.toUpperCase()})} placeholder="Nombre del receptor" /></div> : targetStatus === SealStatus.INSTALADO ? <><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Placa Vehículo:</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none uppercase" value={moveData.vehiclePlate} onChange={e => setMoveData({...moveData, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC-123" /></div><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Trailer/Contenedor:</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none uppercase" value={moveData.trailerContainer} onChange={e => setMoveData({...moveData, trailerContainer: e.target.value.toUpperCase()})} placeholder="Nro Contenedor" /></div></> : targetStatus === SealStatus.NO_INSTALADO ? <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Entregado sub:</label><input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Receptor secundario" /></div> : null}<div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Numero Transporte:</label><textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none uppercase" value={moveData.observations} onChange={e => setMoveData({...moveData, observations: e.target.value.toUpperCase()})} placeholder="Motivo..." /></div></div><div className="flex gap-4 pt-4"><button type="button" onClick={() => setTargetStatus(selectedSeals[0]?.status || null)} className="flex-1 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Atrás</button><button onClick={handleConfirmMovement} className={`flex-1 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-xl ${targetStatus === SealStatus.DESTRUIDO ? 'bg-red-600' : 'bg-custom-blue'}`}>Confirmar Sello</button></div></div>}</div></div></div>}
