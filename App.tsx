@@ -688,8 +688,7 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void; users: User[]; sett
   );
 };
 
-// --- MAIN APP ---
-
+// --- MAIN APP COMPONENT ---
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
