@@ -4,6 +4,7 @@ import { ICONS, MOCK_DATA, MOCK_USERS } from './constants';
 import { Seal, SealStatus, FilterOptions, MovementHistory, User, UserRole, AppSettings } from './types';
 import * as XLSX from 'xlsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { ApiService } from './services/api';
 
 // --- HELPERS ---
 
@@ -718,21 +719,64 @@ export default function App() {
   }, [appSettings.themeColor]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('selloUser');
-    const savedSettings = localStorage.getItem('selloSettings');
-    const savedSeals = localStorage.getItem('selloData');
-    const savedUsers = localStorage.getItem('selloUsers');
-    const savedCities = localStorage.getItem('selloCities');
-    if (savedSettings) setAppSettings(JSON.parse(savedSettings));
-    if (savedCities) setCities(JSON.parse(savedCities));
-    setSeals(savedSeals ? JSON.parse(savedSeals) : MOCK_DATA);
-    setUsers(savedUsers ? JSON.parse(savedUsers) : MOCK_USERS);
-    if (savedUser) setCurrentUser(JSON.parse(savedUser));
+    const loadInitialData = async () => {
+      const savedUser = localStorage.getItem('selloUser');
+      if (savedUser) setCurrentUser(JSON.parse(savedUser));
+
+      const db = await ApiService.getFullDb();
+      if (db) {
+        if (db.settings) {
+          // Forzar actualización si el título es el antiguo o genérico
+          if (db.settings.title === 'SelloMaster Pro' || db.settings.title === 'Sistema de Sellos') {
+            db.settings.title = 'GESTION DE SELLOS CNCH';
+          }
+          setAppSettings(db.settings);
+        }
+        if (db.cities) setCities(db.cities);
+        if (db.seals && db.seals.length > 0) setSeals(db.seals);
+        else setSeals(MOCK_DATA);
+        if (db.users && db.users.length > 0) setUsers(db.users);
+        else setUsers(MOCK_USERS);
+      } else {
+        // Fallback a localStorage si el servidor falla
+        const savedSettings = localStorage.getItem('selloSettings');
+        if (savedSettings) {
+          const parsed = JSON.parse(savedSettings);
+          if (parsed.title === 'SelloMaster Pro' || parsed.title === 'Sistema de Sellos') {
+            parsed.title = 'GESTION DE SELLOS CNCH';
+          }
+          setAppSettings(parsed);
+        }
+        const savedCities = localStorage.getItem('selloCities');
+        if (savedCities) setCities(JSON.parse(savedCities));
+        const savedSeals = localStorage.getItem('selloData');
+        setSeals(savedSeals ? JSON.parse(savedSeals) : MOCK_DATA);
+        const savedUsers = localStorage.getItem('selloUsers');
+        setUsers(savedUsers ? JSON.parse(savedUsers) : MOCK_USERS);
+      }
+    };
+    loadInitialData();
   }, []);
 
-  useEffect(() => { if (seals.length > 0) localStorage.setItem('selloData', JSON.stringify(seals)); }, [seals]);
-  useEffect(() => { if (users.length > 0) localStorage.setItem('selloUsers', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('selloCities', JSON.stringify(cities)); }, [cities]);
+  useEffect(() => {
+    const sync = async () => {
+      if (seals.length > 0 || users.length > 0) {
+        await ApiService.saveFullDb({
+          seals,
+          users,
+          cities,
+          settings: appSettings
+        });
+        // También guardamos en localStorage como backup local
+        localStorage.setItem('selloData', JSON.stringify(seals));
+        localStorage.setItem('selloUsers', JSON.stringify(users));
+        localStorage.setItem('selloCities', JSON.stringify(cities));
+        localStorage.setItem('selloSettings', JSON.stringify(appSettings));
+      }
+    };
+    sync();
+  }, [seals, users, cities, appSettings]);
+
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); } }, [toast]);
 
   const handleRestoreDB = (data: any) => {
