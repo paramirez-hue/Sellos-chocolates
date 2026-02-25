@@ -4,12 +4,13 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "vite",
     "build": "tsc && vite build",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
     "express": "^5.2.1",
     "lucide-react": "^0.474.0",
     "react": "^19.0.0",

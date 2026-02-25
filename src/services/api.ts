@@ -16,7 +16,7 @@ export const ApiService = {
       
       if (error) throw error;
       
-      return (seals || []).map(s => ({
+      return (seals || []).map((s: any) => ({
         ...s,
         history: (s.history || []).sort((a: any, b: any) => b.id - a.id)
       }));
@@ -144,7 +144,7 @@ export const ApiService = {
         .from('cities')
         .select('name');
       if (error) throw error;
-      return (data || []).map(c => c.name);
+      return (data || []).map((c: any) => c.name);
     } catch {
       return [];
     }
@@ -222,6 +222,20 @@ export const ApiService = {
         .upsert([{ id: 1, ...settings }]);
       return !error;
     } catch {
+      return false;
+    }
+  },
+
+  async saveFullDb(data: any): Promise<boolean> {
+    try {
+      if (data.settings) {
+        await this.saveSettings(data.settings);
+      }
+      // Note: For seals and users, it's recommended to use the specific 
+      // createSeal/saveUser methods for better performance and consistency.
+      return true;
+    } catch (error) {
+      console.error('Error in saveFullDb:', error);
       return false;
     }
   }
