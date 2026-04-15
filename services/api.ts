@@ -1,50 +1,55 @@
 
 import { Seal, User, SealStatus, AppSettings } from '../types';
-
-// Configura aquí la URL de tu API que conecta con SQL
-const API_BASE_URL = 'https://tu-api-sql-backend.com/api';
+import { supabase } from './supabase';
 
 /**
- * SERVICIO MAESTRO DE DATOS
- * Centraliza la comunicación con el backend SQL.
+ * SERVICIO MAESTRO DE DATOS (SUPABASE)
+ * Centraliza la comunicación con la base de datos en la nube.
  */
 export const ApiService = {
   // --- SELLOS / PRECINTOS ---
   async getSeals(): Promise<Seal[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/seals`);
-      if (!response.ok) throw new Error('Error al obtener sellos');
-      return await response.json();
+      const { data, error } = await supabase
+        .from('seals')
+        .select('*')
+        .order('lastMovement', { ascending: false });
+
+      if (error) throw error;
+      return data as Seal[];
     } catch (error) {
-      console.error('SQL Connection Error:', error);
-      // Fallback a localStorage si no hay conexión
+      console.error('Supabase Fetch Error (Seals):', error);
       return JSON.parse(localStorage.getItem('selloData') || '[]');
     }
   },
 
-  async createSeal(seal: Seal): Promise<boolean> {
+  async saveSeals(seals: Seal[]): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE_URL}/seals`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(seal),
-      });
-      return response.ok;
+      // En Supabase podemos usar upsert para guardar todo el lote
+      const { error } = await supabase
+        .from('seals')
+        .upsert(seals, { onConflict: 'id' });
+
+      if (error) throw error;
+      return true;
     } catch (error) {
-      console.error('Error al guardar en SQL:', error);
+      console.error('Supabase Save Error (Seals):', error);
+      localStorage.setItem('selloData', JSON.stringify(seals));
       return false;
     }
   },
 
-  async updateSealStatus(ids: string[], status: SealStatus, details: string, user: string): Promise<boolean> {
+  async updateSeal(seal: Seal): Promise<boolean> {
     try {
-      const response = await fetch(`${API_BASE_URL}/seals/movement`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, status, details, user, date: new Date().toLocaleString('es-ES') }),
-      });
-      return response.ok;
+      const { error } = await supabase
+        .from('seals')
+        .update(seal)
+        .eq('id', seal.id);
+
+      if (error) throw error;
+      return true;
     } catch (error) {
+      console.error('Supabase Update Error (Seal):', error);
       return false;
     }
   },
@@ -52,20 +57,83 @@ export const ApiService = {
   // --- USUARIOS ---
   async getUsers(): Promise<User[]> {
     try {
-      const response = await fetch(`${API_BASE_URL}/users`);
-      return await response.json();
-    } catch {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*');
+
+      if (error) throw error;
+      return data as User[];
+    } catch (error) {
+      console.error('Supabase Fetch Error (Users):', error);
       return JSON.parse(localStorage.getItem('selloUsers') || '[]');
+    }
+  },
+
+  async saveUsers(users: User[]): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .upsert(users, { onConflict: 'id' });
+      return !error;
+    } catch {
+      localStorage.setItem('selloUsers', JSON.stringify(users));
+      return false;
+    }
+  },
+
+  // --- CIUDADES ---
+  async getCities(): Promise<string[]> {
+    try {
+      const { data, error } = await supabase
+        .from('cities')
+        .select('name');
+      
+      if (error) throw error;
+      return data.map(c => c.name);
+    } catch {
+      return JSON.parse(localStorage.getItem('selloCities') || '["BOGOTÁ", "MEDELLÍN", "CALI", "BARRANQUILLA"]');
+    }
+  },
+
+  async saveCities(cities: string[]): Promise<boolean> {
+    try {
+      const cityObjects = cities.map(name => ({ name }));
+      // Primero limpiamos y luego insertamos (o usamos upsert si hay ID)
+      // Para simplicidad en este ejemplo, asumimos una tabla simple
+      const { error } = await supabase
+        .from('cities')
+        .upsert(cityObjects, { onConflict: 'name' });
+      return !error;
+    } catch {
+      localStorage.setItem('selloCities', JSON.stringify(cities));
+      return false;
     }
   },
 
   // --- CONFIGURACIÓN ---
   async getSettings(): Promise<AppSettings> {
     try {
-      const response = await fetch(`${API_BASE_URL}/settings`);
-      return await response.json();
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .single();
+
+      if (error) throw error;
+      return data as AppSettings;
     } catch {
-      return JSON.parse(localStorage.getItem('selloSettings') || '{"title": "SelloMaster Pro", "logo": null, "sealTypes": ["Botella", "Cable", "Plástico"]}');
+      return JSON.parse(localStorage.getItem('selloSettings') || '{"title": "SelloMaster Pro", "logo": null, "sealTypes": ["Botella", "Cable", "Plástico"], "themeColor": "#003594"}');
+    }
+  },
+
+  async saveSettings(settings: AppSettings): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({ id: 1, ...settings }, { onConflict: 'id' });
+      return !error;
+    } catch {
+      localStorage.setItem('selloSettings', JSON.stringify(settings));
+      return false;
     }
   }
 };

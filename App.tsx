@@ -4,6 +4,7 @@ import { ICONS, MOCK_DATA, MOCK_USERS } from './constants';
 import { Seal, SealStatus, FilterOptions, MovementHistory, User, UserRole, AppSettings } from './types';
 import * as XLSX from 'xlsx';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { ApiService } from './services/api';
 
 // --- HELPERS ---
 
@@ -718,33 +719,44 @@ export default function App() {
   }, [appSettings.themeColor]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('selloUser');
-    const savedSettings = localStorage.getItem('selloSettings');
-    const savedSeals = localStorage.getItem('selloData');
-    const savedUsers = localStorage.getItem('selloUsers');
-    const savedCities = localStorage.getItem('selloCities');
-    if (savedSettings) setAppSettings(JSON.parse(savedSettings));
-    if (savedCities) setCities(JSON.parse(savedCities));
-    setSeals(savedSeals ? JSON.parse(savedSeals) : MOCK_DATA);
-    setUsers(savedUsers ? JSON.parse(savedUsers) : MOCK_USERS);
-    if (savedUser) setCurrentUser(JSON.parse(savedUser));
+    const loadData = async () => {
+      const savedUser = localStorage.getItem('selloUser');
+      if (savedUser) setCurrentUser(JSON.parse(savedUser));
+
+      const [dbSeals, dbUsers, dbCities, dbSettings] = await Promise.all([
+        ApiService.getSeals(),
+        ApiService.getUsers(),
+        ApiService.getCities(),
+        ApiService.getSettings()
+      ]);
+
+      if (dbSeals.length > 0) setSeals(dbSeals);
+      else setSeals(MOCK_DATA);
+
+      if (dbUsers.length > 0) setUsers(dbUsers);
+      else setUsers(MOCK_USERS);
+
+      if (dbCities.length > 0) setCities(dbCities);
+      if (dbSettings) setAppSettings(dbSettings);
+    };
+    loadData();
   }, []);
 
-  useEffect(() => { if (seals.length > 0) localStorage.setItem('selloData', JSON.stringify(seals)); }, [seals]);
-  useEffect(() => { if (users.length > 0) localStorage.setItem('selloUsers', JSON.stringify(users)); }, [users]);
-  useEffect(() => { localStorage.setItem('selloCities', JSON.stringify(cities)); }, [cities]);
+  useEffect(() => { if (seals.length > 0) ApiService.saveSeals(seals); }, [seals]);
+  useEffect(() => { if (users.length > 0) ApiService.saveUsers(users); }, [users]);
+  useEffect(() => { ApiService.saveCities(cities); }, [cities]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); } }, [toast]);
 
-  const handleRestoreDB = (data: any) => {
-    if (data.seals) localStorage.setItem('selloData', JSON.stringify(data.seals));
-    if (data.users) localStorage.setItem('selloUsers', JSON.stringify(data.users));
-    if (data.cities) localStorage.setItem('selloCities', JSON.stringify(data.cities));
-    if (data.settings) localStorage.setItem('selloSettings', JSON.stringify(data.settings));
+  const handleRestoreDB = async (data: any) => {
+    if (data.seals) await ApiService.saveSeals(data.seals);
+    if (data.users) await ApiService.saveUsers(data.users);
+    if (data.cities) await ApiService.saveCities(data.cities);
+    if (data.settings) await ApiService.saveSettings(data.settings);
   };
 
   const handleLogin = (u: User) => { setCurrentUser(u); localStorage.setItem('selloUser', JSON.stringify(u)); setIsSearchPerformed(false); setFilteredSeals([]); };
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('selloUser'); setActiveTab('dashboard'); setIsSearchPerformed(false); setIsDeleteModeActive(false); };
-  const handleUpdateSettings = (s: AppSettings) => { setAppSettings(s); localStorage.setItem('selloSettings', JSON.stringify(s)); };
+  const handleUpdateSettings = async (s: AppSettings) => { setAppSettings(s); await ApiService.saveSettings(s); };
   const handleAddUser = (u: User) => setUsers([...users, u]);
   const handleUpdateUser = (updatedUser: User) => { setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u)); if (currentUser?.id === updatedUser.id) { setCurrentUser(updatedUser); localStorage.setItem('selloUser', JSON.stringify(updatedUser)); } };
   const handleDeleteUser = (id: string) => setUsers(users.filter(u => u.id !== id));
