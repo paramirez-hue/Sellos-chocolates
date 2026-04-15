@@ -721,26 +721,33 @@ export default function App() {
 
   useEffect(() => {
     const loadData = async () => {
-      const savedUser = localStorage.getItem('selloUser');
-      if (savedUser) setCurrentUser(JSON.parse(savedUser));
+      try {
+        const savedUser = localStorage.getItem('selloUser');
+        if (savedUser) setCurrentUser(JSON.parse(savedUser));
 
-      const [dbSeals, dbUsers, dbCities, dbSettings] = await Promise.all([
-        ApiService.getSeals(),
-        ApiService.getUsers(),
-        ApiService.getCities(),
-        ApiService.getSettings()
-      ]);
+        const [dbSeals, dbUsers, dbCities, dbSettings] = await Promise.all([
+          ApiService.getSeals(),
+          ApiService.getUsers(),
+          ApiService.getCities(),
+          ApiService.getSettings()
+        ]);
 
-      if (dbSeals.length > 0) setSeals(dbSeals);
-      else setSeals(MOCK_DATA);
+        if (dbSeals && dbSeals.length > 0) setSeals(dbSeals);
+        else setSeals(MOCK_DATA);
 
-      if (dbUsers.length > 0) setUsers(dbUsers);
-      else setUsers(MOCK_USERS);
+        if (dbUsers && dbUsers.length > 0) setUsers(dbUsers);
+        else setUsers(MOCK_USERS);
 
-      if (dbCities.length > 0) setCities(dbCities);
-      if (dbSettings) setAppSettings(dbSettings);
-      
-      setIsInitialLoadDone(true);
+        if (dbCities && dbCities.length > 0) setCities(dbCities);
+        if (dbSettings) setAppSettings(dbSettings);
+      } catch (error) {
+        console.error("Error loading initial data:", error);
+        // Fallback to defaults if everything fails
+        setSeals(MOCK_DATA);
+        setUsers(MOCK_USERS);
+      } finally {
+        setIsInitialLoadDone(true);
+      }
     };
     loadData();
   }, []);
