@@ -15,15 +15,13 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "jsx": "react-jsx",
-    "types": ["vite/client"]
+    "jsx": "react-jsx"
   },
   "include": [
     "App.tsx",
     "constants.tsx",
     "index.tsx",
-    "types.ts",
-    "src/**/*"
+    "types.ts"
   ],
   "exclude": [
     "node_modules",
