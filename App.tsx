@@ -261,8 +261,8 @@ const SettingsView: React.FC<{
   const [title, setTitle] = useState(settings.title);
   const [logoPreview, setLogoPreview] = useState<string | null>(settings.logo);
   const [newType, setNewType] = useState('');
-  const [sealTypes, setSealTypes] = useState<string[]>(settings.sealTypes);
-  const [themeColor, setThemeColor] = useState(settings.themeColor || '#003594');
+  const [sealTypes, setSealTypes] = useState<string[]>(settings?.sealTypes || []);
+  const [themeColor, setThemeColor] = useState(settings?.themeColor || '#003594');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dbFileRef = useRef<HTMLInputElement>(null);
 
@@ -408,7 +408,7 @@ const SettingsView: React.FC<{
               <input type="text" placeholder="Ej: Sello Metálico" className="flex-1 border border-slate-200 bg-white p-3.5 rounded-xl text-sm font-bold text-custom-blue outline-none uppercase" value={newType} onChange={e => setNewType(e.target.value.toUpperCase())} />
               <button onClick={addSealType} className="bg-custom-blue text-white px-6 py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black">Añadir</button>
             </div>
-            <div className="flex flex-wrap gap-2">{sealTypes.map(t => <div key={t} className="bg-white border border-slate-200 px-4 py-2 rounded-lg flex items-center gap-3 font-bold text-[11px] text-custom-blue shadow-sm group">{t}<button onClick={() => removeSealType(t)} className="text-slate-300 hover:text-red-500 transition-colors"><ICONS.Trash className="w-3.5 h-3.5" /></button></div>)}</div>
+            <div className="flex flex-wrap gap-2">{(sealTypes || []).map(t => <div key={t} className="bg-white border border-slate-200 px-4 py-2 rounded-lg flex items-center gap-3 font-bold text-[11px] text-custom-blue shadow-sm group">{t}<button onClick={() => removeSealType(t)} className="text-slate-300 hover:text-red-500 transition-colors"><ICONS.Trash className="w-3.5 h-3.5" /></button></div>)}</div>
           </div>
         </div>
 

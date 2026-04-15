@@ -95,7 +95,7 @@ export const ICONS = {
   ),
   Map: ({ className = "w-4 h-4" }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className={className}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-12v8.25m.503 3.446 1.482-1.482a.75.75 0 0 1 1.06 0l3 3a.75.75 0 0 1 0 1.06l-3 3a.75.75 0 0 1-1.06 0l-1.482-1.482m-9.750 1.061 1.482 1.482a.75.75 0 0 0 1.06 0l3-3a.75.75 0 0 0 0-1.06l-3-3a.75.75 0 0 0-1.06 0L1.713 11.237a.75.75 0 0 0 0 1.06l1.482 1.482Z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 6.75V15m6-12v8.25m.503 3.446 1.482-1.482a.75 .75 0 0 1 1.06 0l3 3a.75 .75 0 0 1 0 1.06l-3 3a.75 .75 0 0 1-1.06 0l-1.482-1.482m-9.750 1.061 1.482 1.482a.75 .75 0 0 0 1.06 0l3-3a.75 .75 0 0 0 0-1.06l-3-3a.75 .75 0 0 0-1.06 0L1.713 11.237a.75 .75 0 0 0 0 1.06l1.482 1.482Z" />
     </svg>
   ),
 };
