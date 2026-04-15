@@ -708,6 +708,7 @@ export default function App() {
   const [isDeleteModeActive, setIsDeleteModeActive] = useState(false);
   
   const [appSettings, setAppSettings] = useState<AppSettings>({ title: 'SelloMaster Pro', logo: null, sealTypes: ['Botella', 'Cable', 'Plástico', 'Metálico'], themeColor: '#003594' });
+  const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
   const fileExcelRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -738,13 +739,15 @@ export default function App() {
 
       if (dbCities.length > 0) setCities(dbCities);
       if (dbSettings) setAppSettings(dbSettings);
+      
+      setIsInitialLoadDone(true);
     };
     loadData();
   }, []);
 
-  useEffect(() => { if (seals.length > 0) ApiService.saveSeals(seals); }, [seals]);
-  useEffect(() => { if (users.length > 0) ApiService.saveUsers(users); }, [users]);
-  useEffect(() => { ApiService.saveCities(cities); }, [cities]);
+  useEffect(() => { if (isInitialLoadDone && seals.length > 0) ApiService.saveSeals(seals); }, [seals, isInitialLoadDone]);
+  useEffect(() => { if (isInitialLoadDone && users.length > 0) ApiService.saveUsers(users); }, [users, isInitialLoadDone]);
+  useEffect(() => { if (isInitialLoadDone) ApiService.saveCities(cities); }, [cities, isInitialLoadDone]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); } }, [toast]);
 
   const handleRestoreDB = async (data: any) => {
