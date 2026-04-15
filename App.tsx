@@ -1036,7 +1036,92 @@ export default function App() {
       )}
 
       {/* Modal de Movimiento */}
-      {isMoveFormOpen && selectedSeals.length > 0 && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"><div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg border border-gray-200 overflow-hidden animate-in zoom-in duration-200"><div className="bg-custom-blue px-8 py-5 flex justify-between items-center text-white"><h3 className="text-[10px] font-black uppercase tracking-widest">{selectedSeals.length > 1 ? `GESTIÓN MASIVA: ${selectedSeals.length} UNIDADES` : `GESTIONAR: ${selectedSeals[0].id}`}</h3><button onClick={() => setIsMoveFormOpen(false)}>✕</button></div><div className="p-8 space-y-6">{targetStatus === selectedSeals[0].status ? <div className="space-y-4 text-center"><p className={`text-[10px] font-black uppercase tracking-widest ${getStatusTextColor(selectedSeals[0].status)}`}>Estado Actual: {selectedSeals[0].status.replace('_', ' ')}</p><div className="grid grid-cols-1 gap-2">{(selectedSeals[0].status === SealStatus.ENTRADA_INVENTARIO || selectedSeals[0].status === SealStatus.NO_INSTALADO) && <button onClick={() => setTargetStatus(SealStatus.ASIGNADO)} className="bg-sky-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Asignado</button>}{selectedSeals[0].status === SealStatus.ASIGNADO && <button onClick={() => setTargetStatus(SealStatus.ENTREGADO)} className="bg-amber-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Entregado</button>}{selectedSeals[0].status === SealStatus.ENTREGADO && (<><button onClick={() => setTargetStatus(SealStatus.INSTALADO)} className="bg-orange-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Instalado</button><button onClick={() => setTargetStatus(SealStatus.NO_INSTALADO)} className="bg-stone-500 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Reportar No Instalado</button></>)}{selectedSeals[0].status === SealStatus.INSTALADO && <button onClick={() => setTargetStatus(SealStatus.SALIDA_FABRICA)} className="bg-gray-500 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Salida</button>}<button onClick={() => setTargetStatus(SealStatus.DESTRUIDO)} className="bg-red-600 text-white p-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest">Mover Sello a Destruido</button></div></div> : <div className="space-y-6"><div className="flex items-center justify-center gap-3 bg-slate-50 p-4 rounded-xl"><span className={`text-[9px] font-black uppercase px-2 py-1 rounded border ${getStatusStyles(selectedSeals[0].status).split('icon-bg-')[0]}`}>{selectedSeals[0].status.replace('_', ' ')}</span><ICONS.ArrowRightTiny className="text-slate-300" /><span className={`text-[9px] font-black uppercase px-2 py-1 rounded border shadow-sm ${targetStatus ? getStatusStyles(targetStatus).split('icon-bg-')[0] : ''}`}>{targetStatus?.replace('_', ' ')}</span></div><div className="max-h-[45vh] overflow-y-auto pr-2 space-y-4 custom-scrollbar">{(targetStatus === SealStatus.ASIGNADO || targetStatus === SealStatus.ENTREGADO) ? <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Usuario Receptor:</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none uppercase" value={moveData.requester} onChange={e => setMoveData({...moveData, requester: e.target.value.toUpperCase()})} placeholder="Nombre del receptor" /></div> : targetStatus === SealStatus.INSTALADO ? <><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Placa Vehículo:</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none uppercase" value={moveData.vehiclePlate} onChange={e => setMoveData({...moveData, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC-123" /></div><div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Trailer/Contenedor:</label><input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none uppercase" value={moveData.trailerContainer} onChange={e => setMoveData({...moveData, trailerContainer: e.target.value.toUpperCase()})} placeholder="Nro Contenedor" /></div></> : targetStatus === SealStatus.NO_INSTALADO ? <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Entregado sub:</label><input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Receptor secundario" /></div> : null}<div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Numero Transporte:</label><textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none uppercase" value={moveData.observations} onChange={e => setMoveData({...moveData, observations: e.target.value.toUpperCase()})} placeholder="Motivo..." /></div></div><div className="flex gap-4 pt-4"><button type="button" onClick={() => setTargetStatus(selectedSeals[0]?.status || null)} className="flex-1 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Atrás</button><button onClick={handleConfirmMovement} className={`flex-1 text-white py-4 rounded-xl font-black text-[10px] uppercase shadow-xl ${targetStatus === SealStatus.DESTRUIDO ? 'bg-red-600' : 'bg-custom-blue'}`}>Confirmar Sello</button></div></div>}</div></div></div>}
+      {isMoveFormOpen && selectedSeals.length > 0 && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md border border-gray-200 overflow-hidden animate-in zoom-in duration-200">
+            <div className="bg-custom-blue px-6 py-4 flex justify-between items-center text-white">
+              <h3 className="text-[10px] font-black uppercase tracking-widest">
+                {selectedSeals.length > 1 ? `GESTIÓN MASIVA: ${selectedSeals.length} UNIDADES` : `GESTIONAR: ${selectedSeals[0].id}`}
+              </h3>
+              <button onClick={() => setIsMoveFormOpen(false)} className="hover:rotate-90 transition-transform">✕</button>
+            </div>
+            <div className="p-6 space-y-5">
+              {targetStatus === selectedSeals[0].status ? (
+                <div className="space-y-4 text-center">
+                  <p className={`text-[10px] font-black uppercase tracking-widest ${getStatusTextColor(selectedSeals[0].status)}`}>
+                    Estado Actual: {selectedSeals[0].status.replace('_', ' ')}
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {(selectedSeals[0].status === SealStatus.ENTRADA_INVENTARIO || selectedSeals[0].status === SealStatus.NO_INSTALADO) && (
+                      <button onClick={() => setTargetStatus(SealStatus.ASIGNADO)} className="bg-sky-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-sky-700 transition-all">Mover a Asignado</button>
+                    )}
+                    {selectedSeals[0].status === SealStatus.ASIGNADO && (
+                      <button onClick={() => setTargetStatus(SealStatus.ENTREGADO)} className="bg-amber-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-amber-700 transition-all">Mover a Entregado</button>
+                    )}
+                    {selectedSeals[0].status === SealStatus.ENTREGADO && (
+                      <>
+                        <button onClick={() => setTargetStatus(SealStatus.INSTALADO)} className="bg-orange-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-700 transition-all">Mover a Instalado</button>
+                        <button onClick={() => setTargetStatus(SealStatus.NO_INSTALADO)} className="bg-stone-500 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-stone-600 transition-all">Reportar No Instalado</button>
+                      </>
+                    )}
+                    {selectedSeals[0].status === SealStatus.INSTALADO && (
+                      <button onClick={() => setTargetStatus(SealStatus.SALIDA_FABRICA)} className="bg-gray-500 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-600 transition-all">Mover a Salida</button>
+                    )}
+                    <button onClick={() => setTargetStatus(SealStatus.DESTRUIDO)} className="bg-red-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-700 transition-all">Mover a Destruido</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  <div className="flex items-center justify-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border bg-white shadow-sm ${getStatusStyles(selectedSeals[0].status).split('icon-bg-')[0]}`}>
+                      {selectedSeals[0].status.replace('_', ' ')}
+                    </span>
+                    <ICONS.ArrowRightTiny className="text-slate-300 w-4 h-4" />
+                    <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border bg-white shadow-sm ${targetStatus ? getStatusStyles(targetStatus).split('icon-bg-')[0] : ''}`}>
+                      {targetStatus?.replace('_', ' ')}
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1 custom-scrollbar">
+                    {(targetStatus === SealStatus.ASIGNADO || targetStatus === SealStatus.ENTREGADO) ? (
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Usuario Receptor</label>
+                        <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.requester} onChange={e => setMoveData({...moveData, requester: e.target.value.toUpperCase()})} placeholder="Nombre del receptor" />
+                      </div>
+                    ) : targetStatus === SealStatus.INSTALADO ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Placa</label>
+                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.vehiclePlate} onChange={e => setMoveData({...moveData, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC-123" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Contenedor</label>
+                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.trailerContainer} onChange={e => setMoveData({...moveData, trailerContainer: e.target.value.toUpperCase()})} placeholder="Nro" />
+                        </div>
+                      </div>
+                    ) : targetStatus === SealStatus.NO_INSTALADO ? (
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Entregado sub:</label>
+                        <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Receptor secundario" />
+                      </div>
+                    ) : null}
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Número Transporte / Observaciones</label>
+                      <textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase min-h-[80px] resize-none" value={moveData.observations} onChange={e => setMoveData({...moveData, observations: e.target.value.toUpperCase()})} placeholder="Detalles del movimiento..." />
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-4 pt-2">
+                    <button type="button" onClick={() => setTargetStatus(selectedSeals[0]?.status || null)} className="flex-1 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Atrás</button>
+                    <button onClick={handleConfirmMovement} className={`flex-1 text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all hover:-translate-y-1 active:scale-95 ${targetStatus === SealStatus.DESTRUIDO ? 'bg-red-600' : 'bg-custom-blue'}`}>Confirmar Sello</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <style>{`.custom-scrollbar::-webkit-scrollbar { width: 4px; } .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; } .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }`}</style>
       <InventorySearchModal isOpen={isSearchModalOpen} onClose={() => setIsSearchModalOpen(false)} onSearch={handleInventorySearch} sealTypes={appSettings.sealTypes} />
     </div>
