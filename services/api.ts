@@ -54,6 +54,20 @@ export const ApiService = {
     }
   },
 
+  async deleteSeal(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('seals')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Supabase Delete Error (Seal):', error);
+      return false;
+    }
+  },
+
   // --- USUARIOS ---
   async getUsers(): Promise<User[]> {
     try {
@@ -81,6 +95,18 @@ export const ApiService = {
     }
   },
 
+  async deleteUser(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', id);
+      return !error;
+    } catch {
+      return false;
+    }
+  },
+
   // --- CIUDADES ---
   async getCities(): Promise<string[]> {
     try {
@@ -98,14 +124,24 @@ export const ApiService = {
   async saveCities(cities: string[]): Promise<boolean> {
     try {
       const cityObjects = cities.map(name => ({ name }));
-      // Primero limpiamos y luego insertamos (o usamos upsert si hay ID)
-      // Para simplicidad en este ejemplo, asumimos una tabla simple
       const { error } = await supabase
         .from('cities')
         .upsert(cityObjects, { onConflict: 'name' });
       return !error;
     } catch {
       localStorage.setItem('selloCities', JSON.stringify(cities));
+      return false;
+    }
+  },
+
+  async deleteCity(name: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('cities')
+        .delete()
+        .eq('name', name);
+      return !error;
+    } catch {
       return false;
     }
   },
