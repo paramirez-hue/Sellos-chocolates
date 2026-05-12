@@ -1,7 +1,8 @@
 
 export enum UserRole {
   ADMIN = 'ADMIN',
-  GESTOR = 'GESTOR'
+  GESTOR = 'GESTOR',
+  AUXILIAR_SALIDA = 'AUXILIAR_SALIDA'
 }
 
 export interface User {
@@ -19,6 +20,7 @@ export interface AppSettings {
   logo: string | null;
   sealTypes: string[];
   themeColor: string; // Color principal del tema
+  zplConfig: string; // Configuración de etiqueta ZPL
 }
 
 export enum SealStatus {
@@ -28,7 +30,9 @@ export enum SealStatus {
   ENTREGADO = 'ENTREGADO',
   ENTRADA_INVENTARIO = 'ENTRADA_INVENTARIO',
   DESTRUIDO = 'DESTRUIDO',
-  ASIGNADO = 'ASIGNADO'
+  ASIGNADO = 'ASIGNADO',
+  ASIGNACION_INSTALACION = 'ASIGNACION_INSTALACION',
+  DESPACHADO = 'DESPACHADO'
 }
 
 export interface MovementHistory {

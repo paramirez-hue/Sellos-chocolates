@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ICONS, MOCK_DATA, MOCK_USERS } from './constants';
 import { Seal, SealStatus, FilterOptions, MovementHistory, User, UserRole, AppSettings } from './types';
 import * as XLSX from 'xlsx';
+import { Html5QrcodeScanner } from 'html5-qrcode';
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { ApiService } from './services/api';
 
@@ -12,16 +13,12 @@ const getStatusStyles = (status: SealStatus) => {
   switch (status) {
     case SealStatus.ENTRADA_INVENTARIO:
       return "bg-emerald-50 text-emerald-800 border-emerald-200 icon-bg-emerald-500 text-emerald-600";
-    case SealStatus.ASIGNADO:
+    case SealStatus.ASIGNACION_INSTALACION:
       return "bg-sky-50 text-sky-800 border-sky-200 icon-bg-sky-500 text-sky-600";
-    case SealStatus.ENTREGADO:
-      return "bg-amber-50 text-amber-800 border-amber-200 icon-bg-amber-500 text-amber-600";
-    case SealStatus.INSTALADO:
-      return "bg-orange-50 text-orange-800 border-orange-200 icon-bg-orange-500 text-orange-600";
-    case SealStatus.NO_INSTALADO:
-      return "bg-[#F5F5DC] text-stone-800 border-stone-300 icon-bg-stone-500 text-stone-600";
     case SealStatus.SALIDA_FABRICA:
       return "bg-gray-100 text-gray-700 border-gray-300 icon-bg-gray-500 text-gray-600";
+    case SealStatus.DESPACHADO:
+      return "bg-indigo-50 text-indigo-800 border-indigo-200 icon-bg-indigo-500 text-indigo-600";
     case SealStatus.DESTRUIDO:
       return "bg-red-50 text-red-800 border-red-200 icon-bg-red-500 text-red-600";
     default:
@@ -32,11 +29,9 @@ const getStatusStyles = (status: SealStatus) => {
 const getStatusColorHex = (status: SealStatus) => {
   switch (status) {
     case SealStatus.ENTRADA_INVENTARIO: return "#10b981";
-    case SealStatus.ASIGNADO: return "#0ea5e9";
-    case SealStatus.ENTREGADO: return "#f59e0b";
-    case SealStatus.INSTALADO: return "#f97316";
-    case SealStatus.NO_INSTALADO: return "#a8a29e";
+    case SealStatus.ASIGNACION_INSTALACION: return "#0ea5e9";
     case SealStatus.SALIDA_FABRICA: return "#64748b";
+    case SealStatus.DESPACHADO: return "#6366f1";
     case SealStatus.DESTRUIDO: return "#ef4444";
     default: return "#94a3b8";
   }
@@ -263,6 +258,7 @@ const SettingsView: React.FC<{
   const [newType, setNewType] = useState('');
   const [sealTypes, setSealTypes] = useState<string[]>(settings?.sealTypes || []);
   const [themeColor, setThemeColor] = useState(settings?.themeColor || '#003594');
+  const [zplConfig, setZplConfig] = useState(settings?.zplConfig || '');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dbFileRef = useRef<HTMLInputElement>(null);
 
@@ -290,7 +286,7 @@ const SettingsView: React.FC<{
   };
 
   const handleSave = () => { 
-    onUpdate({ title, logo: logoPreview, sealTypes, themeColor }); 
+    onUpdate({ title, logo: logoPreview, sealTypes, themeColor, zplConfig }); 
     alert('Configuración guardada satisfactoriamente.'); 
   };
 
@@ -409,6 +405,19 @@ const SettingsView: React.FC<{
               <button onClick={addSealType} className="bg-custom-blue text-white px-6 py-3.5 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black">Añadir</button>
             </div>
             <div className="flex flex-wrap gap-2">{(sealTypes || []).map(t => <div key={t} className="bg-white border border-slate-200 px-4 py-2 rounded-lg flex items-center gap-3 font-bold text-[11px] text-custom-blue shadow-sm group">{t}<button onClick={() => removeSealType(t)} className="text-slate-300 hover:text-red-500 transition-colors"><ICONS.Trash className="w-3.5 h-3.5" /></button></div>)}</div>
+          </div>
+        </div>
+
+        <div className="space-y-4 pt-6 border-t border-slate-100">
+          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest block">Configurador de Etiqueta ZPL</label>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed mb-4">Utilice variables como <span className="text-custom-blue">`{"{{ID}}"}`</span>, <span className="text-custom-blue">`{"{{TYPE}}"}`</span>, <span className="text-custom-blue">`{"{{PLATE}}"}`</span> y <span className="text-custom-blue">`{"{{TRAILER}}"}`</span>.</p>
+          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+            <textarea 
+              className="w-full border border-slate-200 bg-white p-4 rounded-xl font-mono text-xs text-slate-700 h-48 focus:ring-4 focus:ring-blue-50 outline-none"
+              value={zplConfig}
+              onChange={(e) => setZplConfig(e.target.value)}
+              placeholder="Ingrese código ZPL..."
+            />
           </div>
         </div>
 
@@ -592,7 +601,13 @@ const UserManagement: React.FC<{
                 <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Contraseña</label><input type="password" required className="w-full border border-slate-200 bg-gray-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue focus:bg-white outline-none" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} /></div>
                 <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Sede Asignada</label><select className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue focus:bg-white outline-none appearance-none" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})}>{cities.map(city => <option key={city} value={city}>{city}</option>)}</select></div>
               </div>
-              <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Rol / Permisos</label><select className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-3.5 text-sm font-bold text-custom-blue focus:bg-white outline-none appearance-none" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as UserRole})}><option value={UserRole.GESTOR}>Gestor Operativo (Local)</option><option value={UserRole.ADMIN}>Administrador Maestro</option></select></div>
+              <div className="space-y-1.5"><label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Rol / Permisos</label>
+                <select className="w-full border border-gray-200 bg-gray-50 rounded-xl px-4 py-3.5 text-sm font-bold text-custom-blue focus:bg-white outline-none appearance-none" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value as UserRole})}>
+                  <option value={UserRole.GESTOR}>Gestor Operativo (Local)</option>
+                  <option value={UserRole.ADMIN}>Administrador Maestro</option>
+                  <option value={UserRole.AUXILIAR_SALIDA}>Auxiliar Salida Fábrica</option>
+                </select>
+              </div>
               <div className="flex gap-4 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); setEditingUser(null); }} className="flex-1 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Cancelar</button><button type="submit" className="flex-1 bg-custom-blue text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-black shadow-lg">{editingUser ? 'Guardar Cambios' : 'Registrar'}</button></div>
             </form>
           </div>
@@ -677,7 +692,7 @@ const MovementsView: React.FC<{
   }, [foundSeals]);
 
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); const ids = searchQuery.split(',').map(id => id.trim().toUpperCase()).filter(id => id !== ''); if (foundSeals.length < ids.length) alert(`Uno o más precintos no existen en la sede ${user.city} o han sido escritos incorrectamente.`); else if (commonStatus === 'MIXED') alert(`Error de Lote: Todos los precintos deben estar en el mismo estado para realizar una operación masiva.`); };
-  const isFinal = commonStatus === SealStatus.SALIDA_FABRICA || commonStatus === SealStatus.DESTRUIDO;
+  const isFinal = (commonStatus as any) === SealStatus.SALIDA_FABRICA || (commonStatus as any) === SealStatus.DESTRUIDO;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -689,16 +704,86 @@ const MovementsView: React.FC<{
           <div className="p-8 space-y-6"><div className="text-center space-y-2"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Estado Actual del Sello</p><div className={`p-3 rounded-2xl border-2 text-center font-black text-xl uppercase shadow-inner transition-all duration-500 ${getStatusStyles(commonStatus as SealStatus).split('icon-bg-')[0]}`}>{(commonStatus as SealStatus).replace('_', ' ')}</div></div>
             {!isFinal ? (
               <div className="space-y-4"><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Seleccione el Cambio de Estado para el Sello</p><div className="grid grid-cols-1 gap-2">
-                  {(commonStatus === SealStatus.ENTRADA_INVENTARIO || commonStatus === SealStatus.NO_INSTALADO) && <button onClick={() => onInitiateMove(foundSeals, SealStatus.ASIGNADO)} className="bg-sky-600 text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.01] transition-all">Asignar Sello a Pedido</button>}
-                  {commonStatus === SealStatus.ASIGNADO && <button onClick={() => onInitiateMove(foundSeals, SealStatus.ENTREGADO)} className="bg-amber-600 text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.01] transition-all">Entregar Despacho del Sello</button>}
-                  {commonStatus === SealStatus.ENTREGADO && (<><button onClick={() => onInitiateMove(foundSeals, SealStatus.INSTALADO)} className="bg-orange-600 text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.01] transition-all">Confirmar Instalación de Sello</button><button onClick={() => onInitiateMove(foundSeals, SealStatus.NO_INSTALADO)} className="bg-stone-500 text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.01] transition-all">Reportar No Instalado (Reutilizar)</button></>)}
-                  {commonStatus === SealStatus.INSTALADO && <button onClick={() => onInitiateMove(foundSeals, SealStatus.SALIDA_FABRICA)} className="bg-gray-500 text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.01] transition-all">Liberar Salida Sello (Final)</button>}
+                  {commonStatus === SealStatus.ENTRADA_INVENTARIO && <button onClick={() => onInitiateMove(foundSeals, SealStatus.SALIDA_FABRICA)} className="bg-custom-blue text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.01] transition-all">ASIGNACIÓN E INSTALACIÓN DE SELLO</button>}
+                  {commonStatus === SealStatus.SALIDA_FABRICA && <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center py-4 italic">El sello está listo para Salida Fábrica (pendiente escaneo QR)</p>}
                   <button onClick={() => onInitiateMove(foundSeals, SealStatus.DESTRUIDO)} className="bg-red-600 text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg hover:scale-[1.01] transition-all">Reportar Sello Destruido</button>
                 </div></div>
             ) : <div className="bg-slate-50 p-6 rounded-2xl border-2 border-dashed border-slate-200 text-center space-y-4 animate-in zoom-in"><p className={`text-sm font-black uppercase tracking-widest transition-colors ${getStatusTextColor(commonStatus as SealStatus)}`}>Ciclo operativo finalizado ({(commonStatus as SealStatus).replace('_', ' ')})</p></div>}
           </div>
         </div>
       ) : searchQuery !== '' ? <div className="bg-red-50 border-2 border-dashed border-red-200 rounded-3xl p-12 text-center space-y-4"><div className="bg-white w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-sm"><ICONS.StopCircle className="w-8 h-8 text-red-500" /></div><div className="space-y-1"><p className="font-black text-red-800 uppercase text-xs tracking-widest">Inconsistencia en el Lote</p><p className="text-[10px] text-red-600 font-bold uppercase tracking-wider">Verifique que todos los precintos existan y tengan el mismo estado actual.</p></div></div> : <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-3xl p-20 text-center space-y-4"><div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-sm"><ICONS.Move className="w-8 h-8 text-blue-100" /></div><p className="font-black text-slate-300 uppercase text-xs tracking-[0.3em]">Ingrese IDs para iniciar gestión masiva en {user.city}</p></div>}
+    </div>
+  );
+};
+
+const DespachoScannerView: React.FC<{ 
+  seals: Seal[]; 
+  onConfirmExit: (sealId: string) => void;
+  user: User;
+}> = ({ seals, onConfirmExit, user }) => {
+  const [scanResult, setScanResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const scanner = new Html5QrcodeScanner(
+      "reader",
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      /* verbose= */ false
+    );
+
+    const onScanSuccess = (decodedText: string) => {
+      setScanResult(decodedText);
+      scanner.clear();
+      
+      const foundSeal = seals.find(s => s.id.toUpperCase() === decodedText.toUpperCase());
+      if (foundSeal) {
+        if (foundSeal.status === SealStatus.SALIDA_FABRICA) {
+          onConfirmExit(foundSeal.id);
+        } else {
+          setError(`El sello ${decodedText} no está listo para salida (Estado actual: ${foundSeal.status})`);
+        }
+      } else {
+        setError(`Sello ${decodedText} no encontrado en el sistema.`);
+      }
+    };
+
+    scanner.render(onScanSuccess, (err) => console.warn(err));
+
+    return () => {
+      scanner.clear().catch(e => console.warn("Scanner clear error", e));
+    };
+  }, [seals, onConfirmExit]);
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div>
+        <h3 className="text-2xl font-black text-custom-blue uppercase tracking-tighter italic">Control Escáner Salida</h3>
+        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Sede Operativa: <span className="text-custom-blue">{user.city}</span></p>
+      </div>
+
+      <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 p-8 space-y-6">
+        <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
+        
+        {scanResult && !error && (
+          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-center">
+            <p className="text-emerald-800 font-black text-[10px] uppercase tracking-widest">Sello Identificado</p>
+            <p className="text-emerald-600 font-mono font-bold text-xl">{scanResult}</p>
+          </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center space-y-2">
+            <p className="text-red-800 font-black text-[10px] uppercase tracking-widest">Error de Validación</p>
+            <p className="text-red-600 text-[10px] font-bold leading-relaxed">{error}</p>
+            <button onClick={() => { setScanResult(null); setError(null); window.location.reload(); }} className="text-[10px] font-black text-custom-blue uppercase underline">Reintentar Escaneo</button>
+          </div>
+        )}
+
+        <div className="pt-4 border-t border-slate-100 flex items-center flex-col gap-2">
+          <ICONS.History className="w-5 h-5 text-slate-300" />
+          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] text-center">Posicione el código QR del precinto frente a la cámara para confirmar su salida de fábrica</p>
+        </div>
+      </div>
     </div>
   );
 };
@@ -737,7 +822,13 @@ export default function App() {
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [isDeleteModeActive, setIsDeleteModeActive] = useState(false);
   
-  const [appSettings, setAppSettings] = useState<AppSettings>({ title: 'SelloMaster Pro', logo: null, sealTypes: ['Botella', 'Cable', 'Plástico', 'Metálico'], themeColor: '#003594' });
+  const [appSettings, setAppSettings] = useState<AppSettings>({ 
+    title: 'SelloMaster Pro', 
+    logo: null, 
+    sealTypes: ['Botella', 'Cable', 'Plástico', 'Metálico'], 
+    themeColor: '#003594',
+    zplConfig: '^XA^FO50,50^BQN,2,10^FDQA,{{ID}}^FS^FO250,50^A0N,30,30^FDSELLO: {{ID}}^FS^FO250,100^A0N,20,20^FDTIPO: {{TYPE}}^FS^FO250,130^A0N,20,20^FDPLACA: {{PLATE}}^FS^FO250,160^A0N,20,20^FDREMOLQUE: {{TRAILER}}^FS^XZ'
+  });
   const [isInitialLoadDone, setIsInitialLoadDone] = useState(false);
   const fileExcelRef = useRef<HTMLInputElement>(null);
 
@@ -769,7 +860,13 @@ export default function App() {
         else setUsers(MOCK_USERS);
 
         if (dbCities && dbCities.length > 0) setCities(dbCities);
-        if (dbSettings) setAppSettings(dbSettings);
+        if (dbSettings) {
+          setAppSettings(prev => ({
+            ...prev,
+            ...dbSettings,
+            zplConfig: dbSettings.zplConfig || prev.zplConfig 
+          }));
+        }
       } catch (error) {
         console.error("Error loading initial data:", error);
         // Fallback to defaults if everything fails
@@ -823,6 +920,21 @@ export default function App() {
     setCities(cities.map(c => c.toUpperCase() === oldCity.toUpperCase() ? newCity.toUpperCase() : c.toUpperCase())); 
     setUsers(users.map(u => u.city?.toUpperCase() === oldCity.toUpperCase() ? { ...u, city: newCity.toUpperCase() } : u)); 
     setSeals(seals.map(s => s.city?.toUpperCase() === oldCity.toUpperCase() ? { ...s, city: newCity.toUpperCase() } : s)); 
+  };
+
+  const handleConfirmExit = (id: string) => {
+    const now = new Date().toLocaleString('es-ES');
+    setSeals(prev => prev.map(s => 
+      s.id.toUpperCase() === id.toUpperCase() 
+        ? { 
+            ...s, 
+            status: SealStatus.DESPACHADO, 
+            lastMovement: now,
+            history: [{ date: now, fromStatus: s.status, toStatus: SealStatus.DESPACHADO, user: currentUser?.fullName || 'CONTROL SALIDA', details: 'Salida de fábrica confirmada vía escaneo QR' }, ...s.history]
+          } 
+        : s
+    ));
+    setToast({message: `SALIDA CONFIRMADA: ${id}`, type: 'success'});
   };
   
   const checkSealDuplicate = (id: string, type: string) => seals.some(s => s.id.toUpperCase() === id.toUpperCase() && s.type.toUpperCase() === type.toUpperCase());
@@ -916,15 +1028,47 @@ export default function App() {
   const handleConfirmMovement = () => { 
     if (selectedSeals.length === 0 || !targetStatus) return; 
     let details = ""; 
-    if (targetStatus === SealStatus.ASIGNADO || targetStatus === SealStatus.ENTREGADO) { 
-      if (!moveData.requester) return alert("El Usuario Receptor es obligatorio."); 
-      details = `USUARIO RECEPTOR: ${moveData.requester} | OBSERVACIONES: ${moveData.observations || 'Sin observaciones'}`; 
-    } else if (targetStatus === SealStatus.INSTALADO) { 
-      if (!moveData.vehiclePlate || !moveData.trailerContainer) return alert("Placa y Contenedor obligatorios."); 
-      details = `PLACA VEHÍCULO: ${moveData.vehiclePlate} | TRAILER/CONTENEDOR: ${moveData.trailerContainer} | OBSERVACIONES: ${moveData.observations || 'Sin observaciones'}`; 
-    } else if (targetStatus === SealStatus.NO_INSTALADO) { 
-      if (!moveData.deliveredSub) return alert("El campo 'Entregado sub:' es obligatorio."); 
-      details = `ENTREGADO SUB: ${moveData.deliveredSub} | OBSERVACIONES: ${moveData.observations || 'Sin observaciones'}`; 
+    if (targetStatus === SealStatus.SALIDA_FABRICA) { 
+      if (!moveData.vehiclePlate || !moveData.trailerContainer) {
+        setToast({message: "Placa y Remolque obligatorios", type: 'error'});
+        return;
+      }
+      details = `RECEPTOR: ${moveData.requester || '-'} | PLACA: ${moveData.vehiclePlate} | REMOLQUE: ${moveData.trailerContainer} | TRANSPORTE: ${moveData.deliveredSub || '-'} | OBS: ${moveData.observations || '-'}`;
+      
+      // Imprimir etiquetas ZPL
+      try {
+        const allZpl: string[] = [];
+        selectedSeals.forEach(seal => {
+          const config = appSettings.zplConfig || '^XA^FO50,50^BQN,2,10^FDQA,{{ID}}^FS^FO250,50^A0N,30,30^FDSELLO: {{ID}}^FS^FO250,100^A0N,20,20^FDTIPO: {{TYPE}}^FS^FO250,130^A0N,20,20^FDPLACA: {{PLATE}}^FS^FO250,160^A0N,20,20^FDREMOLQUE: {{TRAILER}}^FS^XZ';
+          const zpl = config
+            .replace(/{{ID}}/g, seal.id)
+            .replace(/{{TYPE}}/g, seal.type)
+            .replace(/{{PLATE}}/g, moveData.vehiclePlate)
+            .replace(/{{TRAILER}}/g, moveData.trailerContainer);
+          allZpl.push(zpl);
+        });
+        
+        console.log("Generando etiquetas ZPL:", allZpl);
+        
+        // Abrir una sola ventana con todas las etiquetas
+        if (allZpl.length > 0) {
+          const printWindow = window.open('', '_blank');
+          if (printWindow) {
+            printWindow.document.write(`
+              <html>
+                <head><title>Etiquetas ZPL</title></head>
+                <body style="font-family:monospace; white-space:pre; padding:20px; background:#f8fafc;">
+                  <h2 style="font-family:sans-serif; text-transform:uppercase; font-size:12px; color:#64748b; margin-bottom:20px; border-bottom:1px solid #e2e8f0; padding-bottom:10px;">Comprobante de Etiquetas Generadas</h2>
+                  ${allZpl.map((z, i) => `<div style="background:white; padding:20px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:20px;"><strong style="font-family:sans-serif; display:block; margin-bottom:10px; font-size:10px; color:#0f172a;">ETIQUETA ${i+1}:</strong>${z}</div>`).join('')}
+                </body>
+              </html>
+            `);
+            printWindow.document.close();
+          }
+        }
+      } catch (err) {
+        console.error("Error generating ZPL:", err);
+      }
     } else if (targetStatus === SealStatus.DESTRUIDO) { 
       if (!moveData.observations) return alert("El Motivo es obligatorio."); 
       details = `MOTIVO DESTRUCCIÓN: ${moveData.observations}`; 
@@ -958,13 +1102,47 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 flex text-slate-900 font-sans">
       {toast && <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[60] animate-in slide-in-from-top-4"><div className={`px-8 py-4 rounded-2xl shadow-2xl border flex items-center gap-3 ${toast.type === 'success' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-red-600 border-red-500 text-white'}`}><div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">{toast.type === 'success' ? <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg> : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M6 18L18 6M6 6l12 12"/></svg>}</div><p className="text-xs font-black uppercase tracking-widest">{toast.message}</p></div></div>}
-      <aside className="w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto hidden md:block border-r border-slate-800 shadow-2xl z-20"><div className="p-8 h-full flex flex-col"><div className="flex items-center gap-4 mb-12"><div className="bg-custom-blue p-2 rounded-xl shadow-lg w-22 h-11 flex items-center justify-center shrink-0 border border-blue-400/30">{appSettings.logo ? <img src={appSettings.logo} className="w-full h-full object-contain" /> : <ICONS.Truck className="text-white" />}</div><h1 className="text-sm font-black tracking-tight leading-tight uppercase italic text-white">{appSettings.title}</h1></div><nav className="space-y-1.5 flex-1"><button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'dashboard' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Dashboard className="w-5 h-5" /> Dashboard</button><button onClick={() => { setActiveTab('inventory'); setIsSearchPerformed(false); }} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'inventory' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Search className="w-5 h-5" /> Inventario</button><button onClick={() => setActiveTab('movements')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'movements' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Move className="w-5 h-5" /> Movimientos</button><button onClick={() => setActiveTab('traceability')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'traceability' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.History className="w-5 h-5" /> Trazabilidad</button>{currentUser.role === UserRole.ADMIN && (<><div className="h-px bg-slate-800 my-6"></div><button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'users' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Users className="w-5 h-5" /> Usuarios</button><button onClick={() => setActiveTab('cities')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'cities' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Map className="w-5 h-5" /> Ciudades</button><button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'settings' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Configuración</button></>)}</nav><div className="pt-8 border-t border-slate-800 mt-auto text-center"><p className="text-[10px] font-black uppercase text-slate-500 mb-2">Sede: {currentUser.city}</p><button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-lg text-red-400 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest hover:bg-red-900/20"><ICONS.Logout className="w-4 h-4" /> Salir del Sistema</button></div></div></aside>
+      <aside className="w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto hidden md:block border-r border-slate-800 shadow-2xl z-20">
+        <div className="p-8 h-full flex flex-col">
+          <div className="flex items-center gap-4 mb-12">
+            <div className="bg-custom-blue p-2 rounded-xl shadow-lg w-22 h-11 flex items-center justify-center shrink-0 border border-blue-400/30">
+              {appSettings.logo ? <img src={appSettings.logo} className="w-full h-full object-contain" /> : <ICONS.Truck className="text-white" />}
+            </div>
+            <h1 className="text-sm font-black tracking-tight leading-tight uppercase italic text-white">{appSettings.title}</h1>
+          </div>
+          <nav className="space-y-1.5 flex-1">
+            {currentUser.role !== UserRole.AUXILIAR_SALIDA ? (
+              <>
+                <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'dashboard' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Dashboard className="w-5 h-5" /> Dashboard</button>
+                <button onClick={() => { setActiveTab('inventory'); setIsSearchPerformed(false); }} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'inventory' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Search className="w-5 h-5" /> Inventario</button>
+                <button onClick={() => setActiveTab('movements')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'movements' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Move className="w-5 h-5" /> Movimientos</button>
+                <button onClick={() => setActiveTab('traceability')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'traceability' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.History className="w-5 h-5" /> Trazabilidad</button>
+              </>
+            ) : (
+              <button onClick={() => setActiveTab('despacho')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'despacho' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Move className="w-5 h-5" /> Escáner Salida</button>
+            )}
+            {currentUser.role === UserRole.ADMIN && (
+              <>
+                <div className="h-px bg-slate-800 my-6"></div>
+                <button onClick={() => setActiveTab('users')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'users' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Users className="w-5 h-5" /> Usuarios</button>
+                <button onClick={() => setActiveTab('cities')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'cities' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Map className="w-5 h-5" /> Ciudades</button>
+                <button onClick={() => setActiveTab('settings')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'settings' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924-1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Configuración</button>
+              </>
+            )}
+          </nav>
+          <div className="pt-8 border-t border-slate-800 mt-auto text-center">
+            <p className="text-[10px] font-black uppercase text-slate-500 mb-2">Sede: {currentUser.city}</p>
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-3 py-3 rounded-lg text-red-400 hover:text-white transition-all text-[10px] font-black uppercase tracking-widest hover:bg-red-900/20"><ICONS.Logout className="w-4 h-4" /> Salir del Sistema</button>
+          </div>
+        </div>
+      </aside>
       <main className="flex-1 md:ml-64 pt-16 min-w-0 bg-slate-50 min-h-screen"><header className="h-16 bg-white border-b border-slate-200 fixed top-0 right-0 left-0 md:left-64 z-10 flex items-center justify-between px-10"><h2 className="text-sm font-black text-custom-blue uppercase tracking-[0.2em]">{activeTab.toUpperCase()}</h2><div className="flex items-center gap-6">{currentUser.role === UserRole.ADMIN && activeTab === 'inventory' && <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200"><span className="text-[9px] font-black uppercase tracking-widest text-slate-500">Modo Seguro (Borrado)</span><button onClick={() => setIsDeleteModeActive(!isDeleteModeActive)} className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${isDeleteModeActive ? 'bg-red-500' : 'bg-slate-200'}`}><span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isDeleteModeActive ? 'translate-x-5' : 'translate-x-0'}`}></span></button></div>}<div className="flex items-center gap-3"><span className="text-[10px] font-bold text-custom-blue uppercase tracking-widest">Sede {currentUser.city}</span><div className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse border border-white"></div></div></div></header>
         <div className="p-8 sm:p-12">
           {activeTab === 'dashboard' && <DashboardView seals={seals} user={currentUser} cities={cities} />}
           {activeTab === 'inventory' && <div className="space-y-8 animate-in fade-in duration-500"><div className="flex flex-wrap items-center justify-between bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4"><div className="flex flex-wrap gap-4"><button onClick={() => setIsNewSealModalOpen(true)} className="bg-custom-blue text-white px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-custom-blue-dark transition-all shadow-lg">Nuevo Sello</button><button onClick={() => fileExcelRef.current?.click()} className="bg-white text-custom-blue border border-custom-blue px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"><ICONS.Import className="w-4 h-4" /> Carga Masiva</button><button onClick={() => setIsSearchModalOpen(true)} className="bg-white text-custom-blue border border-custom-blue px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"><ICONS.Search className="w-4 h-4" /> Búsqueda</button></div><button onClick={handleInventoryDownload} className="bg-emerald-600 text-white px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg"><ICONS.Excel className="w-4 h-4" /> Exportar Inventario</button><input ref={fileExcelRef} type="file" accept=".xlsx, .xls, .csv" onChange={handleExcelImport} className="hidden" /></div>{isSearchPerformed ? <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300"><div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Resultados: <span className="text-custom-blue">{filteredSeals.length} precintos encontrados</span></p><button onClick={() => setIsSearchPerformed(false)} className="text-[10px] font-black text-custom-blue uppercase hover:underline">Limpiar Resultados</button></div><div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden overflow-x-auto"><table className="w-full text-left text-[11px]"><thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-black uppercase tracking-widest"><tr><th className="px-8 py-6 text-custom-blue">ID Sello</th><th className="px-8 py-6 text-custom-blue">Estado Logístico</th><th className="px-8 py-6 text-custom-blue">Tipo</th><th className="px-8 py-6 text-custom-blue">Operador</th><th className="px-8 py-6 text-custom-blue">Ciudad</th>{isDeleteModeActive && currentUser.role === UserRole.ADMIN && <th className="px-8 py-6 text-red-600 text-right">Acciones</th>}</tr></thead><tbody className="divide-y divide-slate-100 font-bold text-slate-900">{filteredSeals.length > 0 ? filteredSeals.map(s => (<tr key={s.id} onClick={() => !isDeleteModeActive && initiateMovement([s], s.status)} className={`group transition-all ${!isDeleteModeActive ? 'hover:bg-blue-50/30 cursor-pointer' : ''}`}><td className="px-8 py-5 font-black font-mono text-[14px] text-custom-blue group-hover:text-blue-600 uppercase">{s.id}</td><td className="px-8 py-5"><span className={`px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest transition-all ${getStatusStyles(s.status).split('icon-bg-')[0]}`}>{s.status.replace('_', ' ')}</span></td><td className="px-8 py-5 text-slate-700 font-bold uppercase text-[9px]">{s.type}</td><td className="px-8 py-5 uppercase font-black text-[10px] text-slate-700">{s.entryUser}</td><td className="px-8 py-5 text-custom-blue font-black text-[10px] uppercase">{s.city}</td>{isDeleteModeActive && currentUser.role === UserRole.ADMIN && (<td className="px-8 py-5 text-right"><button onClick={(e) => { e.stopPropagation(); handleDeleteSeal(s.id); }} className="p-2 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar Precinto Permanentemente"><ICONS.Trash className="w-4 h-4" /></button></td>)}</tr>)) : (<tr><td colSpan={isDeleteModeActive ? 6 : 5} className="px-8 py-20 text-center font-bold text-slate-400 uppercase tracking-widest">No se encontraron registros</td></tr>)}</tbody></table></div></div> : <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-32 text-center space-y-4"><div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-sm"><ICONS.Search className="w-8 h-8 text-blue-100 opacity-50" /></div><p className="font-black text-slate-300 uppercase text-xs tracking-[0.3em]">Utilice el botón "Búsqueda" para consultar el inventario de {currentUser.city}</p></div>}</div>}
           {activeTab === 'movements' && <MovementsView seals={seals} onInitiateMove={initiateMovement} user={currentUser} />}
           {activeTab === 'traceability' && <TraceabilityView seals={seals} user={currentUser} />}
+          {activeTab === 'despacho' && <DespachoScannerView seals={seals} onConfirmExit={handleConfirmExit} user={currentUser} />}
           {activeTab === 'users' && currentUser.role === UserRole.ADMIN && <UserManagement users={users} cities={cities} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
           {activeTab === 'cities' && currentUser.role === UserRole.ADMIN && <CityManagement cities={cities} onAddCity={handleAddCity} onDeleteCity={handleDeleteCity} onUpdateCity={handleUpdateCity} />}
           {activeTab === 'settings' && currentUser.role === UserRole.ADMIN && <SettingsView settings={appSettings} onUpdate={handleUpdateSettings} onRestoreDB={handleRestoreDB} />}
@@ -1052,20 +1230,8 @@ export default function App() {
                     Estado Actual: {selectedSeals[0].status.replace('_', ' ')}
                   </p>
                   <div className="grid grid-cols-1 gap-2">
-                    {(selectedSeals[0].status === SealStatus.ENTRADA_INVENTARIO || selectedSeals[0].status === SealStatus.NO_INSTALADO) && (
-                      <button onClick={() => setTargetStatus(SealStatus.ASIGNADO)} className="bg-sky-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-sky-700 transition-all">Mover a Asignado</button>
-                    )}
-                    {selectedSeals[0].status === SealStatus.ASIGNADO && (
-                      <button onClick={() => setTargetStatus(SealStatus.ENTREGADO)} className="bg-amber-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-amber-700 transition-all">Mover a Entregado</button>
-                    )}
-                    {selectedSeals[0].status === SealStatus.ENTREGADO && (
-                      <>
-                        <button onClick={() => setTargetStatus(SealStatus.INSTALADO)} className="bg-orange-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-orange-700 transition-all">Mover a Instalado</button>
-                        <button onClick={() => setTargetStatus(SealStatus.NO_INSTALADO)} className="bg-stone-500 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-stone-600 transition-all">Reportar No Instalado</button>
-                      </>
-                    )}
-                    {selectedSeals[0].status === SealStatus.INSTALADO && (
-                      <button onClick={() => setTargetStatus(SealStatus.SALIDA_FABRICA)} className="bg-gray-500 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-600 transition-all">Mover a Salida</button>
+                    {selectedSeals[0].status === SealStatus.ENTRADA_INVENTARIO && (
+                      <button onClick={() => setTargetStatus(SealStatus.SALIDA_FABRICA)} className="bg-sky-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-sky-700 transition-all">Asignación e Instalación Sello</button>
                     )}
                     <button onClick={() => setTargetStatus(SealStatus.DESTRUIDO)} className="bg-red-600 text-white p-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-red-700 transition-all">Mover a Destruido</button>
                   </div>
@@ -1083,32 +1249,32 @@ export default function App() {
                   </div>
                   
                   <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1 custom-scrollbar">
-                    {(targetStatus === SealStatus.ASIGNADO || targetStatus === SealStatus.ENTREGADO) ? (
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Usuario Receptor</label>
-                        <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.requester} onChange={e => setMoveData({...moveData, requester: e.target.value.toUpperCase()})} placeholder="Nombre del receptor" />
-                      </div>
-                    ) : targetStatus === SealStatus.INSTALADO ? (
-                      <div className="grid grid-cols-2 gap-3">
+                    {targetStatus === SealStatus.SALIDA_FABRICA ? (
+                      <>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Placa</label>
-                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.vehiclePlate} onChange={e => setMoveData({...moveData, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC-123" />
+                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Nombre del Receptor</label>
+                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.requester} onChange={e => setMoveData({...moveData, requester: e.target.value.toUpperCase()})} placeholder="Nombre del receptor" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Placa (Obligatorio)</label>
+                            <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.vehiclePlate} onChange={e => setMoveData({...moveData, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC-123" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Remolque (Obligatorio)</label>
+                            <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.trailerContainer} onChange={e => setMoveData({...moveData, trailerContainer: e.target.value.toUpperCase()})} placeholder="Nro Remolque" />
+                          </div>
                         </div>
                         <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Contenedor</label>
-                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.trailerContainer} onChange={e => setMoveData({...moveData, trailerContainer: e.target.value.toUpperCase()})} placeholder="Nro" />
+                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Número de Transporte</label>
+                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Número de guía/transporte" />
                         </div>
-                      </div>
-                    ) : targetStatus === SealStatus.NO_INSTALADO ? (
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Entregado sub:</label>
-                        <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Receptor secundario" />
-                      </div>
+                      </>
                     ) : null}
                     
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Número Transporte / Observaciones</label>
-                      <textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase min-h-[80px] resize-none" value={moveData.observations} onChange={e => setMoveData({...moveData, observations: e.target.value.toUpperCase()})} placeholder="Detalles del movimiento..." />
+                      <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Observaciones</label>
+                      <textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase min-h-[80px] resize-none" value={moveData.observations} onChange={e => setMoveData({...moveData, observations: e.target.value.toUpperCase()})} placeholder="Detalles adicionales..." />
                     </div>
                   </div>
                   
