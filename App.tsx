@@ -803,6 +803,101 @@ const LoginScreen: React.FC<{ onLogin: (user: User) => void; users: User[]; sett
   );
 };
 
+// --- ZEBRA BROWSER PRINT UTILITIES ---
+const sendZPLToLocalZebra = async (zplContent: string): Promise<boolean> => {
+  const bases = [
+    "https://127.0.0.1:19196",
+    "https://localhost:19196",
+    "http://127.0.0.1:19190",
+    "http://localhost:19190"
+  ];
+
+  let success = false;
+  let lastError = null;
+
+  for (const base of bases) {
+    try {
+      console.log(`[ZebraPrint] Probando conectar con Zebra local en ${base}...`);
+      
+      // Intentar obtener la impresora predeterminada
+      const defaultRes = await fetch(`${base}/default?type=printer`, {
+        method: "GET",
+        mode: "cors",
+        credentials: "omit"
+      });
+
+      if (!defaultRes.ok) {
+        console.warn(`[ZebraPrint] Endpoint ${base}/default retornó estado no-ok: ${defaultRes.status}`);
+        continue;
+      }
+
+      const deviceText = await defaultRes.text();
+      console.log(`[ZebraPrint] Respuesta de impresora predeterminada:`, deviceText);
+      
+      if (!deviceText || deviceText.trim() === "" || deviceText.includes("No devices found")) {
+        console.warn(`[ZebraPrint] No se encontró ninguna impresora Zebra en ${base}`);
+        continue;
+      }
+
+      let deviceObj: any = null;
+      try {
+        deviceObj = JSON.parse(deviceText);
+      } catch (err) {
+        // En algunas versiones puede devolver CSV o texto plano: "nombre,uid,tipo,..."
+        const parts = deviceText.split(",");
+        if (parts.length >= 2) {
+          deviceObj = {
+            name: parts[0].trim(),
+            uid: parts[1].trim(),
+            connection: parts[2]?.trim() || "usb",
+            deviceType: "printer",
+            version: 2,
+            provider: "Zebra Technologies"
+          };
+        }
+      }
+
+      if (!deviceObj || !deviceObj.name) {
+        console.warn(`[ZebraPrint] Información de impresora inválida parseada de ${base}`);
+        continue;
+      }
+
+      console.log(`[ZebraPrint] Impresora detectada con éxito:`, deviceObj.name);
+
+      // Enviar el comando ZPL
+      const payload = {
+        device: deviceObj,
+        data: zplContent
+      };
+
+      const writeRes = await fetch(`${base}/write`, {
+        method: "POST",
+        mode: "cors",
+        credentials: "omit",
+        headers: {
+          "Content-Type": "text/plain;charset=UTF-8"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (writeRes.ok) {
+        console.log(`[ZebraPrint] ¡Impresión enviada satisfactoriamente a través de ${base}!`);
+        success = true;
+        break;
+      } else {
+        const errText = await writeRes.text();
+        console.error(`[ZebraPrint] Error escribiendo ZPL a ${base}:`, errText);
+        lastError = new Error(`Error escribiendo ZPL: ${writeRes.statusText}`);
+      }
+    } catch (err: any) {
+      console.warn(`[ZebraPrint] No se pudo comunicar con ${base}:`, err.message || err);
+      lastError = err;
+    }
+  }
+
+  return success;
+};
+
 // --- MAIN APP ---
 
 export default function App() {
@@ -1025,9 +1120,10 @@ export default function App() {
 
   const initiateMovement = (selectedBatch: Seal[], status: SealStatus) => { setSelectedSeals(selectedBatch); setTargetStatus(status); setMoveData({ requester: '', observations: '', vehiclePlate: '', trailerContainer: '', deliveredSub: '' }); setIsMoveFormOpen(true); };
   
-  const handleConfirmMovement = () => { 
+  const handleConfirmMovement = async () => { 
     if (selectedSeals.length === 0 || !targetStatus) return; 
     let details = ""; 
+
     if (targetStatus === SealStatus.SALIDA_FABRICA) { 
       if (!moveData.vehiclePlate || !moveData.trailerContainer) {
         setToast({message: "Placa y Remolque obligatorios", type: 'error'});
@@ -1035,39 +1131,178 @@ export default function App() {
       }
       details = `RECEPTOR: ${moveData.requester || '-'} | PLACA: ${moveData.vehiclePlate} | REMOLQUE: ${moveData.trailerContainer} | TRANSPORTE: ${moveData.deliveredSub || '-'} | OBS: ${moveData.observations || '-'}`;
       
-      // Imprimir etiquetas ZPL
+      // Abrir ventana de impresión optimizada para etiquetas con pre-carga de imágenes
       try {
-        const allZpl: string[] = [];
-        selectedSeals.forEach(seal => {
-          const config = appSettings.zplConfig || '^XA^FO50,50^BQN,2,10^FDQA,{{ID}}^FS^FO250,50^A0N,30,30^FDSELLO: {{ID}}^FS^FO250,100^A0N,20,20^FDTIPO: {{TYPE}}^FS^FO250,130^A0N,20,20^FDPLACA: {{PLATE}}^FS^FO250,160^A0N,20,20^FDREMOLQUE: {{TRAILER}}^FS^XZ';
-          const zpl = config
-            .replace(/{{ID}}/g, seal.id)
-            .replace(/{{TYPE}}/g, seal.type)
-            .replace(/{{PLATE}}/g, moveData.vehiclePlate)
-            .replace(/{{TRAILER}}/g, moveData.trailerContainer);
-          allZpl.push(zpl);
-        });
-        
-        console.log("Generando etiquetas ZPL:", allZpl);
-        
-        // Abrir una sola ventana con todas las etiquetas
-        if (allZpl.length > 0) {
-          const printWindow = window.open('', '_blank');
-          if (printWindow) {
-            printWindow.document.write(`
-              <html>
-                <head><title>Etiquetas ZPL</title></head>
-                <body style="font-family:monospace; white-space:pre; padding:20px; background:#f8fafc;">
-                  <h2 style="font-family:sans-serif; text-transform:uppercase; font-size:12px; color:#64748b; margin-bottom:20px; border-bottom:1px solid #e2e8f0; padding-bottom:10px;">Comprobante de Etiquetas Generadas</h2>
-                  ${allZpl.map((z, i) => `<div style="background:white; padding:20px; border-radius:10px; border:1px solid #e2e8f0; margin-bottom:20px;"><strong style="font-family:sans-serif; display:block; margin-bottom:10px; font-size:10px; color:#0f172a;">ETIQUETA ${i+1}:</strong>${z}</div>`).join('')}
-                </body>
-              </html>
-            `);
-            printWindow.document.close();
-          }
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          const logoHtml = appSettings.logo 
+            ? `<img src="${appSettings.logo}" style="height: 10mm; max-width: 45mm; object-fit: contain;" referrerPolicy="no-referrer" />`
+            : `<div style="font-size: 14px; font-weight: 900; color: #003594; letter-spacing: 0.05em; text-transform: uppercase;">${appSettings.title.toUpperCase()}</div>`;
+
+          const labelsHtml = selectedSeals.map((seal, i) => {
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(seal.id)}`;
+            return `
+              <div class="label-tag">
+                <!-- CABECERA -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 3px;">
+                  ${logoHtml}
+                  <div style="font-size: 9px; font-weight: 900; background: #000; color: #fff; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.03em;">
+                    ${seal.type}
+                  </div>
+                </div>
+
+                <!-- CONTENIDO PRINCIPAL -->
+                <div style="display: flex; flex: 1; align-items: center; gap: 4mm;">
+                  <!-- QR CODE -->
+                  <div style="width: 24mm; height: 24mm; display: flex; items-content: center; justify-content: center; border: 1px solid #ddd; padding: 1mm; background: #fff;">
+                    <img src="${qrUrl}" style="width: 10mm; height: 10mm; width: 100%; height: 100%; object-fit: contain;" referrerPolicy="no-referrer" />
+                  </div>
+
+                  <!-- METADATOS -->
+                  <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; color: #000; font-family: monospace; font-size: 9px;">
+                    <div style="font-size: 13px; font-weight: 900; border-bottom: 1px dashed #000; padding-bottom: 1px; margin-bottom: 2px; word-break: break-all;">
+                      ID: ${seal.id}
+                    </div>
+                    <div><strong>PLACA:</strong> ${moveData.vehiclePlate}</div>
+                    <div><strong>REMOLQUE:</strong> ${moveData.trailerContainer}</div>
+                    <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50mm;">
+                      <strong>REC:</strong> ${moveData.requester || '-'}
+                    </div>
+                    <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50mm;">
+                      <strong>TRANS:</strong> ${moveData.deliveredSub || '-'}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- PIE DE PAGINA -->
+                <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 3px; display: flex; justify-content: space-between; align-items: center; font-size: 7px; text-transform: uppercase; color: #333;">
+                  <span>Auxiliares | Nutresa</span>
+                  <span>${new Date().toLocaleString('es-ES')}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+
+          printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Impresión de Etiquetas - ${appSettings.title}</title>
+                <style>
+                  * {
+                    box-sizing: border-box;
+                  }
+                  body {
+                    margin: 0;
+                    padding: 20px;
+                    background-color: #f1f5f9;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                  }
+                  .label-tag {
+                    width: 100mm;
+                    height: 50mm;
+                    border: 2px dashed #64748b;
+                    padding: 3mm 4mm;
+                    margin: 15px auto;
+                    background: white;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                    page-break-after: always;
+                    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+                    position: relative;
+                  }
+                  
+                  @media print {
+                    @page {
+                      size: 100mm 50mm;
+                      margin: 0;
+                    }
+                    body {
+                      background: white;
+                      padding: 0;
+                      margin: 0;
+                    }
+                    .label-tag {
+                      width: 100mm;
+                      height: 50mm;
+                      border: none;
+                      margin: 0;
+                      box-shadow: none;
+                      page-break-after: always;
+                    }
+                    .label-tag:last-child {
+                      page-break-after: avoid;
+                    }
+                    .no-print {
+                      display: none !important;
+                    }
+                  }
+                  
+                  .print-bar {
+                    background: #1e293b;
+                    color: white;
+                    padding: 12px 24px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    max-width: 100mm;
+                    margin: 0 auto 10px auto;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+                  }
+                  .btn-action {
+                    background: ${appSettings.themeColor || '#003594'};
+                    color: white;
+                    border: none;
+                    padding: 6px 14px;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: 800;
+                    text-transform: uppercase;
+                    cursor: pointer;
+                    letter-spacing: 0.05em;
+                  }
+                </style>
+              </head>
+              <body>
+                <div class="print-bar no-print">
+                  <span style="font-size: 11px; font-weight: 600;">Impresión lista (${selectedSeals.length} etiquetas)</span>
+                  <button class="btn-action" onclick="window.print()">Imprimir de nuevo</button>
+                </div>
+
+                <div id="labels-container">
+                  ${labelsHtml}
+                </div>
+
+                <script>
+                  window.addEventListener('load', function() {
+                    // Esperar a que se carguen el logo y los códigos QR
+                    var images = Array.from(document.querySelectorAll('img'));
+                    var promises = images.map(function(img) {
+                      if (img.complete) return Promise.resolve();
+                      return new Promise(function(resolve) {
+                        img.onload = resolve;
+                        img.onerror = resolve; // no bloquear en caso de error de imagen
+                      });
+                    });
+
+                    Promise.all(promises).then(function() {
+                      // Pequeña espera para renderizado completo e invocar la ventana de impresión estándar
+                      setTimeout(function() {
+                        window.print();
+                      }, 400);
+                    });
+                  });
+                </script>
+              </body>
+            </html>
+          `);
+          printWindow.document.close();
         }
       } catch (err) {
-        console.error("Error generating ZPL:", err);
+        console.error("Error al abrir ventana de impresión:", err);
+        setToast({message: "Fallo al abrir ventana de impresión. Compruebe los permisos de ventanas emergentes.", type: 'error'});
       }
     } else if (targetStatus === SealStatus.DESTRUIDO) { 
       if (!moveData.observations) return alert("El Motivo es obligatorio."); 
@@ -1091,10 +1326,16 @@ export default function App() {
       const match = updated.find(u => u.id.toUpperCase() === s.id.toUpperCase()); 
       return match ? match : s; 
     })); 
+    const wasDispatch = targetStatus === SealStatus.SALIDA_FABRICA;
     setIsMoveFormOpen(false); 
     setSelectedSeals([]); 
     setTargetStatus(null); 
-    setToast({message: "Movimiento procesado correctamente", type: 'success'}); 
+    
+    if (wasDispatch) {
+      setToast({message: "Movimiento exitoso. Etiquetas enviadas a impresión", type: 'success'}); 
+    } else {
+      setToast({message: "Movimiento procesado correctamente", type: 'success'}); 
+    }
   };
 
   if (!currentUser) return <LoginScreen onLogin={handleLogin} users={users} settings={appSettings} />;
