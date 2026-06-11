@@ -302,7 +302,7 @@ const SettingsView: React.FC<{
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `SelloMaster_Backup_${new Date().toLocaleDateString()}.json`;
+    link.download = `GestionSellos_Backup_${new Date().toLocaleDateString()}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -559,7 +559,7 @@ const UserManagement: React.FC<{
     if (!formData.username || !formData.password) return alert('Usuario y contraseña obligatorios');
     if (editingUser) onUpdateUser({ ...editingUser, ...formData });
     else {
-      const u: User = { ...formData, id: Math.random().toString(36).substr(2, 9), organization: 'SelloMaster Group' };
+      const u: User = { ...formData, id: Math.random().toString(36).substr(2, 9), organization: 'Gestión de Sellos Group' };
       onAddUser(u);
     }
     setIsModalOpen(false); setEditingUser(null);
@@ -918,7 +918,7 @@ export default function App() {
   const [isDeleteModeActive, setIsDeleteModeActive] = useState(false);
   
   const [appSettings, setAppSettings] = useState<AppSettings>({ 
-    title: 'SelloMaster Pro', 
+    title: 'GESTION DE SELLOS', 
     logo: null, 
     sealTypes: ['Botella', 'Cable', 'Plástico', 'Metálico'], 
     themeColor: '#003594',
@@ -1059,7 +1059,7 @@ export default function App() {
     const exportData = (isSearchPerformed ? filteredSeals : seals)
       .filter(s => s.city?.toUpperCase() === currentUser?.city.toUpperCase())
       .map(s => ({ ID: s.id, Estado: s.status, Tipo: s.type, "Fecha Alta": s.creationDate, "Último Movimiento": s.lastMovement, Operador: s.entryUser })); 
-    exportToExcel(exportData, `Inventario_SelloMaster_${currentUser?.city}`); 
+    exportToExcel(exportData, `Inventario_GestionSellos_${currentUser?.city}`); 
   };
 
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => { 

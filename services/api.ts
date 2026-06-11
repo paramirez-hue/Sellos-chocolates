@@ -157,7 +157,7 @@ export const ApiService = {
       if (error) throw error;
       return data as AppSettings;
     } catch {
-      return JSON.parse(localStorage.getItem('selloSettings') || '{"title": "SelloMaster Pro", "logo": null, "sealTypes": ["Botella", "Cable", "Plástico"], "themeColor": "#003594"}');
+      return JSON.parse(localStorage.getItem('selloSettings') || '{"title": "GESTION DE SELLOS", "logo": null, "sealTypes": ["Botella", "Cable", "Plástico"], "themeColor": "#003594"}');
     }
   },
 
