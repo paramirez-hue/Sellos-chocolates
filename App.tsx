@@ -813,7 +813,7 @@ const DespachoScannerView: React.FC<{
         <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Sede Operativa: <span className="text-custom-blue">{user.city}</span></p>
       </div>
 
-      <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 p-8 space-y-6">
+      <div className={`mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 transition-all duration-300 ${confirmedSeal ? 'max-w-xs p-5 space-y-4' : 'max-w-md p-8 space-y-6'}`}>
         
         {/* Scanner Element remains in DOM to avoid html5-qrcode mount/unmount crashes, but is visually hidden when confirmed */}
         <div className={confirmedSeal ? "hidden" : "space-y-6"}>
@@ -842,55 +842,55 @@ const DespachoScannerView: React.FC<{
 
         {/* Ventana/Vista de Confirmación de Salida Exitosa */}
         {confirmedSeal && (
-          <div className="space-y-6 animate-in zoom-in duration-200 text-center">
-            <div className="w-16 h-16 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
-              <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+          <div className="space-y-4 animate-in zoom-in duration-200 text-center">
+            <div className="w-12 h-12 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
+              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
 
-            <div className="space-y-1">
-              <h4 className="text-lg font-black text-emerald-800 uppercase tracking-tight">Salida de Fábrica Confirmada</h4>
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Movimiento de Precinto Registrado</p>
+            <div className="space-y-0.5">
+              <h4 className="text-base font-black text-emerald-800 uppercase tracking-tight">Salida Confirmada</h4>
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Movimiento de Precinto Registrado</p>
             </div>
 
-            <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 text-left space-y-2.5 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID Sello:</span>
+            <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 text-left space-y-1.5 text-xs">
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ID Sello:</span>
                 <span className="font-mono font-black text-slate-900">{confirmedSeal.id}</span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
-                <span className="font-black bg-slate-900 text-white px-2 py-0.5 rounded text-[10px] uppercase">{confirmedSeal.type}</span>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
+                <span className="font-black bg-slate-900 text-white px-1.5 py-0.5 rounded text-[9px] uppercase">{confirmedSeal.type}</span>
               </div>
               {confirmedSeal.plate && confirmedSeal.plate !== '-' && (
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
                   <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeal.plate}</span>
                 </div>
               )}
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
+              <div className="flex justify-between items-center text-[11px]">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
                 <span className="font-medium text-slate-600">{confirmedSeal.time}</span>
               </div>
             </div>
 
             {/* Parte inferior: Información de ID Contenedor con mensaje de ID Verificado */}
-            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-4 space-y-1">
-              <span className="text-[9px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
-              <p className="text-base font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeal.containerId}</p>
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-0.5">
+              <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
+              <p className="text-sm font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeal.containerId}</p>
               
               <div className="flex items-center justify-center gap-1 text-emerald-600 font-bold">
-                <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span className="text-[10px] font-black uppercase tracking-widest">ID Verificado</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">ID Verificado</span>
               </div>
             </div>
 
             <button 
               onClick={handleCloseConfirmation} 
-              className="w-full bg-custom-blue hover:bg-black text-white font-black py-4 rounded-xl transition-all shadow-lg text-xs uppercase tracking-widest"
+              className="w-full bg-custom-blue hover:bg-black text-white font-black py-2.5 rounded-xl transition-all shadow-md text-xs uppercase tracking-widest"
             >
               Cerrar
             </button>
