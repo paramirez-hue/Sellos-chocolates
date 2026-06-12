@@ -723,6 +723,7 @@ const DespachoScannerView: React.FC<{
 }> = ({ seals, onConfirmExit, user }) => {
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmedSeal, setConfirmedSeal] = useState<{ id: string; containerId: string; type: string; plate: string; time: string } | null>(null);
 
   useEffect(() => {
     const scanner = new Html5QrcodeScanner(
@@ -733,17 +734,61 @@ const DespachoScannerView: React.FC<{
 
     const onScanSuccess = (decodedText: string) => {
       setScanResult(decodedText);
-      scanner.clear();
+      scanner.clear().catch(e => console.warn("Scanner clear error on success", e));
       
-      const foundSeal = seals.find(s => s.id.toUpperCase() === decodedText.toUpperCase());
+      let sealId = decodedText.trim();
+      let containerId = '-';
+      let type = 'BOTELLA';
+      let plate = '-';
+      const qrDataObj: { [key: string]: string } = {};
+
+      const upperText = decodedText.toUpperCase();
+      if (upperText.includes("SELLO:") || upperText.includes("CONTENEDOR:") || upperText.includes("PLACA:")) {
+        const lines = decodedText.split('\n');
+        lines.forEach(line => {
+          const colonIdx = line.indexOf(':');
+          if (colonIdx !== -1) {
+            const key = line.substring(0, colonIdx).trim().toUpperCase();
+            const val = line.substring(colonIdx + 1).trim();
+            qrDataObj[key] = val;
+          }
+        });
+        if (qrDataObj["SELLO"]) {
+          sealId = qrDataObj["SELLO"];
+        }
+        if (qrDataObj["CONTENEDOR"]) {
+          containerId = qrDataObj["CONTENEDOR"];
+        } else if (qrDataObj["ID CONTENEDOR"]) {
+          containerId = qrDataObj["ID CONTENEDOR"];
+        }
+        if (qrDataObj["TIPO"]) {
+          type = qrDataObj["TIPO"];
+        }
+        if (qrDataObj["PLACA"]) {
+          plate = qrDataObj["PLACA"];
+        }
+      }
+      
+      const foundSeal = seals.find(s => s.id.toUpperCase() === sealId.toUpperCase());
       if (foundSeal) {
         if (foundSeal.status === SealStatus.SALIDA_FABRICA) {
           onConfirmExit(foundSeal.id);
+          
+          const finalContainerId = (containerId && containerId !== '-') ? containerId : (foundSeal.containerId || '-');
+          const finalPlate = (plate && plate !== '-') ? plate : '-';
+
+          setConfirmedSeal({
+            id: foundSeal.id,
+            containerId: finalContainerId,
+            type: foundSeal.type || type,
+            plate: finalPlate,
+            time: new Date().toLocaleString('es-ES')
+          });
         } else {
-          setError(`El sello ${decodedText} no está listo para salida (Estado actual: ${foundSeal.status})`);
+          setError(`El sello ${sealId} no está listo para salida (Estado actual: ${foundSeal.status})`);
         }
       } else {
-        setError(`Sello ${decodedText} no encontrado en el sistema.`);
+        setError(`Sello "${sealId}" no encontrado en el sistema.`);
       }
     };
 
@@ -754,6 +799,13 @@ const DespachoScannerView: React.FC<{
     };
   }, [seals, onConfirmExit]);
 
+  const handleCloseConfirmation = () => {
+    setConfirmedSeal(null);
+    setScanResult(null);
+    setError(null);
+    window.location.reload();
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div>
@@ -762,27 +814,89 @@ const DespachoScannerView: React.FC<{
       </div>
 
       <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 p-8 space-y-6">
-        <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
         
-        {scanResult && !error && (
-          <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-center">
-            <p className="text-emerald-800 font-black text-[10px] uppercase tracking-widest">Sello Identificado</p>
-            <p className="text-emerald-600 font-mono font-bold text-xl">{scanResult}</p>
-          </div>
-        )}
+        {/* Scanner Element remains in DOM to avoid html5-qrcode mount/unmount crashes, but is visually hidden when confirmed */}
+        <div className={confirmedSeal ? "hidden" : "space-y-6"}>
+          <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
+          
+          {scanResult && !error && (
+            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-center">
+              <p className="text-emerald-800 font-black text-[10px] uppercase tracking-widest">Sello Identificado</p>
+              <p className="text-emerald-600 font-mono font-bold text-xl">{scanResult}</p>
+            </div>
+          )}
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center space-y-2">
-            <p className="text-red-800 font-black text-[10px] uppercase tracking-widest">Error de Validación</p>
-            <p className="text-red-600 text-[10px] font-bold leading-relaxed">{error}</p>
-            <button onClick={() => { setScanResult(null); setError(null); window.location.reload(); }} className="text-[10px] font-black text-custom-blue uppercase underline">Reintentar Escaneo</button>
-          </div>
-        )}
+          {error && (
+            <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center space-y-2">
+              <p className="text-red-800 font-black text-[10px] uppercase tracking-widest">Error de Validación</p>
+              <p className="text-red-600 text-[10px] font-bold leading-relaxed">{error}</p>
+              <button onClick={() => { setScanResult(null); setError(null); window.location.reload(); }} className="text-[10px] font-black text-custom-blue uppercase underline">Reintentar Escaneo</button>
+            </div>
+          )}
 
-        <div className="pt-4 border-t border-slate-100 flex items-center flex-col gap-2">
-          <ICONS.History className="w-5 h-5 text-slate-300" />
-          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] text-center">Posicione el código QR del precinto frente a la cámara para confirmar su salida de fábrica</p>
+          <div className="pt-4 border-t border-slate-100 flex items-center flex-col gap-2">
+            <ICONS.History className="w-5 h-5 text-slate-300" />
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] text-center">Posicione el código QR del precinto frente a la cámara para confirmar su salida de fábrica</p>
+          </div>
         </div>
+
+        {/* Ventana/Vista de Confirmación de Salida Exitosa */}
+        {confirmedSeal && (
+          <div className="space-y-6 animate-in zoom-in duration-200 text-center">
+            <div className="w-16 h-16 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
+              <svg className="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+
+            <div className="space-y-1">
+              <h4 className="text-lg font-black text-emerald-800 uppercase tracking-tight">Salida de Fábrica Confirmada</h4>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Movimiento de Precinto Registrado</p>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 text-left space-y-2.5 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID Sello:</span>
+                <span className="font-mono font-black text-slate-900">{confirmedSeal.id}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
+                <span className="font-black bg-slate-900 text-white px-2 py-0.5 rounded text-[10px] uppercase">{confirmedSeal.type}</span>
+              </div>
+              {confirmedSeal.plate && confirmedSeal.plate !== '-' && (
+                <div className="flex justify-between items-center">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
+                  <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeal.plate}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
+                <span className="font-medium text-slate-600">{confirmedSeal.time}</span>
+              </div>
+            </div>
+
+            {/* Parte inferior: Información de ID Contenedor con mensaje de ID Verificado */}
+            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-4 space-y-1">
+              <span className="text-[9px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
+              <p className="text-base font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeal.containerId}</p>
+              
+              <div className="flex items-center justify-center gap-1 text-emerald-600 font-bold">
+                <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-[10px] font-black uppercase tracking-widest">ID Verificado</span>
+              </div>
+            </div>
+
+            <button 
+              onClick={handleCloseConfirmation} 
+              className="w-full bg-custom-blue hover:bg-black text-white font-black py-4 rounded-xl transition-all shadow-lg text-xs uppercase tracking-widest"
+            >
+              Cerrar
+            </button>
+          </div>
+        )}
+
       </div>
     </div>
   );
@@ -1409,6 +1523,7 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
         status: targetStatus, 
         lastMovement: now, 
         entryUser: currentUser?.fullName || 'SISTEMA', 
+        containerId: targetStatus === SealStatus.SALIDA_FABRICA ? (moveData.containerId || s.containerId || '-') : s.containerId,
         history: [{ date: now, fromStatus: s.status, toStatus: targetStatus, user: currentUser?.fullName || 'SISTEMA', details: selectedSeals.length > 1 ? `[MASIVO] ${details}` : details }, ...s.history] 
       }; 
       return s; 
