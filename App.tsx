@@ -1223,30 +1223,30 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
                   .logo-area {
                     display: flex;
                     align-items: center;
-                    width: 28mm;
+                    max-width: 24mm;
+                    flex-shrink: 0;
                   }
                   .logo-area img {
                     height: 8mm;
-                    max-width: 28mm;
+                    max-width: 24mm;
                     object-fit: contain;
                   }
                   .placa-title {
-                    font-size: 20px;
-                    font-weight: 850;
+                    font-size: 16px;
+                    font-weight: 900;
                     color: #000;
                     text-align: center;
                     flex: 1;
                     font-family: inherit;
                     letter-spacing: -0.01em;
                     white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
                   }
                   .badge-area {
                     display: flex;
                     justify-content: flex-end;
                     align-items: center;
-                    width: 24mm;
+                    max-width: 20mm;
+                    flex-shrink: 0;
                   }
                   .label-badge {
                     font-size: 8.5px;
@@ -1380,6 +1380,9 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
                       // Pequeña espera para renderizado completo e invocar la ventana de impresión estándar
                       setTimeout(function() {
                         window.print();
+                        setTimeout(function() {
+                          window.close();
+                        }, 200);
                       }, 400);
                     });
                   });
