@@ -1140,7 +1140,15 @@ export default function App() {
             : `<div style="font-size: 14px; font-weight: 900; color: #003594; letter-spacing: 0.05em; text-transform: uppercase;">${appSettings.title.toUpperCase()}</div>`;
 
           const labelsHtml = selectedSeals.map((seal, i) => {
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(seal.id)}`;
+            const qrData = `SELLO: ${seal.id}
+TIPO: ${seal.type}
+PLACA: ${moveData.vehiclePlate || '-'}
+REMOLQUE: ${moveData.trailerContainer || '-'}
+CONTENEDOR: ${moveData.containerId || '-'}
+TRANSPORTE: ${moveData.deliveredSub || '-'}
+RECEPTOR: ${moveData.requester || '-'}
+FECHA: ${new Date().toLocaleString('es-ES')}`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
             return `
               <div class="label-tag">
                 <!-- CABECERA -->
@@ -1148,58 +1156,25 @@ export default function App() {
                   <div class="logo-area">
                     ${logoHtml}
                   </div>
-                  <div class="header-title-area">
-                    <span class="label-subtitle">CONTROL DE DESPACHO</span>
+                  <div class="placa-title">
+                    PLACA: ${moveData.vehiclePlate ? moveData.vehiclePlate.toUpperCase() : '-'}
+                  </div>
+                  <div class="badge-area">
                     <span class="label-badge">${seal.type.toUpperCase()}</span>
                   </div>
                 </div>
 
                 <!-- CONTENIDO PRINCIPAL -->
                 <div class="label-body">
-                  <!-- COLUMNA IZQUIERDA: ESCANEO -->
-                  <div class="label-left">
-                    <div class="qr-box">
-                      <img src="${qrUrl}" class="qr-image" referrerPolicy="no-referrer" />
-                    </div>
-                    <div class="seal-pill">ESCANEABLE</div>
-                  </div>
-
-                  <!-- COLUMNA DERECHA: METADATOS -->
-                  <div class="label-right">
-                    <div class="id-wrapper">
-                      <span class="id-label">NÚMERO DE SELLO</span>
-                      <span class="id-value">${seal.id}</span>
-                    </div>
-
-                    <div class="grid-details">
-                      <div class="grid-item">
-                        <span class="detail-label">PLACA</span>
-                        <span class="detail-val font-mono">${moveData.vehiclePlate || '-'}</span>
-                      </div>
-                      <div class="grid-item">
-                        <span class="detail-label">REMOLQUE</span>
-                        <span class="detail-val font-mono">${moveData.trailerContainer || '-'}</span>
-                      </div>
-                      <div class="grid-item grid-span-2">
-                        <span class="detail-label">ID CONTENEDOR</span>
-                        <span class="detail-val highlighted-val">${moveData.containerId || '-'}</span>
-                      </div>
-                      <div class="grid-item">
-                        <span class="detail-label">GUÍA / TRANS.</span>
-                        <span class="detail-val">${moveData.deliveredSub || '-'}</span>
-                      </div>
-                      <div class="grid-item">
-                        <span class="detail-label">RECEPTOR</span>
-                        <span class="detail-val truncate-text">${moveData.requester || '-'}</span>
-                      </div>
-                    </div>
+                  <div class="qr-box">
+                    <img src="${qrUrl}" class="qr-image" referrerPolicy="no-referrer" />
                   </div>
                 </div>
 
                 <!-- PIE DE PAGINA -->
                 <div class="label-footer">
-                  <span class="footer-system">GESTIÓN DE SELLOS — SERVICIOS NUTRESA</span>
-                  <span class="footer-date">${new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span class="footer-system">AUXILIARES | NUTRESA</span>
+                  <span class="footer-date">${new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
                 </div>
               </div>
             `;
@@ -1222,9 +1197,9 @@ export default function App() {
                   }
                   .label-tag {
                     width: 100mm;
-                    height: 50mm;
+                    height: 60mm;
                     border: 2px dashed #64748b;
-                    padding: 2.5mm 3.5mm;
+                    padding: 3mm 4mm;
                     margin: 15px auto;
                     background: white;
                     display: flex;
@@ -1241,165 +1216,95 @@ export default function App() {
                     justify-content: space-between;
                     align-items: center;
                     border-bottom: 2px solid #000;
-                    padding-bottom: 0.8mm;
-                    margin-bottom: 1.2mm;
-                    height: 8mm;
+                    padding-bottom: 1.5mm;
+                    margin-bottom: 2mm;
+                    height: 12mm;
                   }
                   .logo-area {
                     display: flex;
                     align-items: center;
+                    width: 28mm;
                   }
-                  .header-title-area {
+                  .logo-area img {
+                    height: 8mm;
+                    max-width: 28mm;
+                    object-fit: contain;
+                  }
+                  .placa-title {
+                    font-size: 20px;
+                    font-weight: 850;
+                    color: #000;
+                    text-align: center;
+                    flex: 1;
+                    font-family: inherit;
+                    letter-spacing: -0.01em;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                  }
+                  .badge-area {
                     display: flex;
+                    justify-content: flex-end;
                     align-items: center;
-                    gap: 1.5mm;
-                  }
-                  .label-subtitle {
-                    font-size: 7.5px;
-                    font-weight: 900;
-                    letter-spacing: 0.05em;
-                    color: #1e293b;
+                    width: 24mm;
                   }
                   .label-badge {
-                    font-size: 8px;
+                    font-size: 8.5px;
                     font-weight: 900;
                     background: #000;
                     color: #fff;
-                    padding: 1px 4px;
-                    border-radius: 2px;
-                    letter-spacing: 0.03em;
+                    padding: 2px 7px;
+                    border-radius: 3px;
+                    letter-spacing: 0.04em;
+                    text-transform: uppercase;
+                    display: inline-block;
                   }
                   .label-body {
                     display: flex;
                     flex: 1;
-                    gap: 3mm;
-                    height: 29mm;
-                    align-items: stretch;
-                  }
-                  .label-left {
-                    width: 24mm;
-                    display: flex;
-                    flex-direction: column;
                     align-items: center;
                     justify-content: center;
-                    border-right: 1px dashed #000;
-                    padding-right: 2mm;
+                    height: 36mm;
                   }
                   .qr-box {
-                    width: 20mm;
-                    height: 20mm;
-                    border: 1px solid #000;
-                    padding: 0.8mm;
+                    width: 32mm;
+                    height: 32mm;
+                    border: 1px solid #e4e4e7;
+                    padding: 1.2mm;
                     background: #fff;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
                   }
                   .qr-image {
                     width: 100%;
                     height: 100%;
                     object-fit: contain;
                   }
-                  .seal-pill {
-                    font-size: 6px;
-                    font-weight: 900;
-                    color: #1e293b;
-                    letter-spacing: 0.06em;
-                    margin-top: 1mm;
-                  }
-                  .label-right {
-                    flex: 1;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                  }
-                  .id-wrapper {
-                    display: flex;
-                    flex-direction: column;
-                    border: 1px solid #000;
-                    background: #f8fafc;
-                    padding: 1px 4px;
-                  }
-                  .id-label {
-                    font-size: 5.5px;
-                    font-weight: 900;
-                    color: #475569;
-                    letter-spacing: 0.04em;
-                  }
-                  .id-value {
-                    font-size: 11px;
-                    font-weight: 900;
-                    font-family: monospace;
-                    color: #000;
-                    line-height: 1.1;
-                  }
-                  .grid-details {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 1mm;
-                    flex: 1;
-                    padding-top: 1mm;
-                  }
-                  .grid-item {
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: center;
-                    border-bottom: 1px dashed #cbd5e1;
-                    padding-bottom: 1px;
-                  }
-                  .grid-span-2 {
-                    grid-column: span 2;
-                  }
-                  .detail-label {
-                    font-size: 5.5px;
-                    font-weight: 900;
-                    color: #475569;
-                    line-height: 1;
-                    margin-bottom: 1px;
-                  }
-                  .detail-val {
-                    font-size: 8px;
-                    font-weight: 850;
-                    color: #000;
-                    text-transform: uppercase;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                  }
-                  .font-mono {
-                    font-family: monospace;
-                    font-weight: 900;
-                  }
-                  .highlighted-val {
-                    font-size: 8.5px;
-                    font-weight: 900;
-                    color: #000;
-                    font-family: monospace;
-                  }
-                  .truncate-text {
-                    max-width: 32mm;
-                  }
                   .label-footer {
                     display: flex;
                     justify-content: space-between;
                     align-items: center;
-                    border-top: 1.5px solid #000;
-                    padding-top: 0.8mm;
-                    margin-top: 1.5mm;
-                    height: 3.5mm;
+                    border-top: 2px solid #000;
+                    padding-top: 1mm;
+                    margin-top: 2mm;
+                    height: 5mm;
                   }
                   .footer-system {
-                    font-size: 5.5px;
-                    font-weight: 900;
-                    color: #1e293b;
-                    letter-spacing: 0.04em;
+                    font-size: 7.5px;
+                    font-weight: 800;
+                    color: #000;
+                    letter-spacing: 0.03em;
                   }
                   .footer-date {
-                    font-size: 5.5px;
+                    font-size: 7.5px;
                     font-weight: 800;
-                    color: #475569;
+                    color: #000;
                   }
                   
                   @media print {
                     @page {
-                      size: 100mm 50mm;
+                      size: 100mm 60mm;
                       margin: 0;
                     }
                     body {
@@ -1409,7 +1314,7 @@ export default function App() {
                     }
                     .label-tag {
                       width: 100mm;
-                      height: 50mm;
+                      height: 60mm;
                       border: none;
                       margin: 0;
                       box-shadow: none;
