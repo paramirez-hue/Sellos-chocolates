@@ -559,7 +559,10 @@ const UserManagement: React.FC<{
     if (!formData.username || !formData.password) return alert('Usuario y contraseña obligatorios');
     if (editingUser) onUpdateUser({ ...editingUser, ...formData });
     else {
-      const u: User = { ...formData, id: Math.random().toString(36).substr(2, 9), organization: 'Gestión de Sellos Group' };
+      // Calculamos un ID numérico secuencial basado en los usuarios existentes para evitar fallas con columnas numéricas de base de datos
+      const numericIds = users.map(user => parseInt(user.id, 10)).filter(num => !isNaN(num));
+      const nextId = numericIds.length > 0 ? (Math.max(...numericIds) + 1).toString() : "4";
+      const u: User = { ...formData, id: nextId, organization: 'Gestión de Sellos Group' };
       onAddUser(u);
     }
     setIsModalOpen(false); setEditingUser(null);
@@ -1088,9 +1091,9 @@ export default function App() {
     loadData();
   }, []);
 
-  useEffect(() => { if (isInitialLoadDone && seals.length > 0) ApiService.saveSeals(seals); }, [seals, isInitialLoadDone]);
-  useEffect(() => { if (isInitialLoadDone && users.length > 0) ApiService.saveUsers(users); }, [users, isInitialLoadDone]);
-  useEffect(() => { if (isInitialLoadDone) ApiService.saveCities(cities); }, [cities, isInitialLoadDone]);
+  useEffect(() => { if (isInitialLoadDone && seals.length > 0) ApiService.saveSeals(seals).then(success => { if (!success) setToast({ message: 'Error al sincronizar precintos con la nube.', type: 'error' }); }); }, [seals, isInitialLoadDone]);
+  useEffect(() => { if (isInitialLoadDone && users.length > 0) ApiService.saveUsers(users).then(success => { if (!success) setToast({ message: 'Error al sincronizar usuarios con la nube.', type: 'error' }); }); }, [users, isInitialLoadDone]);
+  useEffect(() => { if (isInitialLoadDone) ApiService.saveCities(cities).then(success => { if (!success) setToast({ message: 'Error al sincronizar ciudades con la nube.', type: 'error' }); }); }, [cities, isInitialLoadDone]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); } }, [toast]);
 
   const handleRestoreDB = async (data: any) => {
@@ -1103,8 +1106,18 @@ export default function App() {
   const handleLogin = (u: User) => { setCurrentUser(u); localStorage.setItem('selloUser', JSON.stringify(u)); setIsSearchPerformed(false); setFilteredSeals([]); };
   const handleLogout = () => { setCurrentUser(null); localStorage.removeItem('selloUser'); setActiveTab('dashboard'); setIsSearchPerformed(false); setIsDeleteModeActive(false); };
   const handleUpdateSettings = async (s: AppSettings) => { setAppSettings(s); await ApiService.saveSettings(s); };
-  const handleAddUser = (u: User) => setUsers([...users, u]);
-  const handleUpdateUser = (updatedUser: User) => { setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u)); if (currentUser?.id === updatedUser.id) { setCurrentUser(updatedUser); localStorage.setItem('selloUser', JSON.stringify(updatedUser)); } };
+  const handleAddUser = (u: User) => {
+    setUsers([...users, u]);
+    setToast({ message: `Usuario "${u.fullName}" registrado exitosamente`, type: 'success' });
+  };
+  const handleUpdateUser = (updatedUser: User) => {
+    setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
+    setToast({ message: `Usuario "${updatedUser.fullName}" actualizado exitosamente`, type: 'success' });
+    if (currentUser?.id === updatedUser.id) {
+      setCurrentUser(updatedUser);
+      localStorage.setItem('selloUser', JSON.stringify(updatedUser));
+    }
+  };
   const handleDeleteUser = async (id: string) => {
     if (window.confirm('¿Está seguro de eliminar este usuario?')) {
       const success = await ApiService.deleteUser(id);

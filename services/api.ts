@@ -88,8 +88,15 @@ export const ApiService = {
       const { error } = await supabase
         .from('users')
         .upsert(users, { onConflict: 'id' });
-      return !error;
-    } catch {
+      
+      if (error) {
+        console.error('Supabase Save Error (Users) - database returned error object:', error);
+        localStorage.setItem('selloUsers', JSON.stringify(users));
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Supabase Save Exception (Users):', err);
       localStorage.setItem('selloUsers', JSON.stringify(users));
       return false;
     }
@@ -101,8 +108,13 @@ export const ApiService = {
         .from('users')
         .delete()
         .eq('id', id);
-      return !error;
-    } catch {
+      if (error) {
+        console.error('Supabase Delete Error (User):', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Supabase Delete Exception (User):', err);
       return false;
     }
   },
