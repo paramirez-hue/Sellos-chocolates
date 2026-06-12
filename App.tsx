@@ -913,7 +913,7 @@ export default function App() {
   const [selectedSeals, setSelectedSeals] = useState<Seal[]>([]);
   const [targetStatus, setTargetStatus] = useState<SealStatus | null>(null);
   const [isMoveFormOpen, setIsMoveFormOpen] = useState(false);
-  const [moveData, setMoveData] = useState({ requester: '', observations: '', vehiclePlate: '', trailerContainer: '', deliveredSub: '' });
+  const [moveData, setMoveData] = useState({ requester: '', observations: '', vehiclePlate: '', trailerContainer: '', deliveredSub: '', containerId: '' });
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [isDeleteModeActive, setIsDeleteModeActive] = useState(false);
   
@@ -1118,7 +1118,7 @@ export default function App() {
     setIsSearchPerformed(true); 
   };
 
-  const initiateMovement = (selectedBatch: Seal[], status: SealStatus) => { setSelectedSeals(selectedBatch); setTargetStatus(status); setMoveData({ requester: '', observations: '', vehiclePlate: '', trailerContainer: '', deliveredSub: '' }); setIsMoveFormOpen(true); };
+  const initiateMovement = (selectedBatch: Seal[], status: SealStatus) => { setSelectedSeals(selectedBatch); setTargetStatus(status); setMoveData({ requester: '', observations: '', vehiclePlate: '', trailerContainer: '', deliveredSub: '', containerId: '' }); setIsMoveFormOpen(true); };
   
   const handleConfirmMovement = async () => { 
     if (selectedSeals.length === 0 || !targetStatus) return; 
@@ -1129,7 +1129,7 @@ export default function App() {
         setToast({message: "Placa y Remolque obligatorios", type: 'error'});
         return;
       }
-      details = `RECEPTOR: ${moveData.requester || '-'} | PLACA: ${moveData.vehiclePlate} | REMOLQUE: ${moveData.trailerContainer} | TRANSPORTE: ${moveData.deliveredSub || '-'} | OBS: ${moveData.observations || '-'}`;
+      details = `RECEPTOR: ${moveData.requester || '-'} | PLACA: ${moveData.vehiclePlate} | REMOLQUE: ${moveData.trailerContainer} | CONTENEDOR: ${moveData.containerId || '-'} | TRANSPORTE: ${moveData.deliveredSub || '-'} | OBS: ${moveData.observations || '-'}`;
       
       // Abrir ventana de impresión optimizada para etiquetas con pre-carga de imágenes
       try {
@@ -1144,40 +1144,62 @@ export default function App() {
             return `
               <div class="label-tag">
                 <!-- CABECERA -->
-                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 3px;">
-                  ${logoHtml}
-                  <div style="font-size: 9px; font-weight: 900; background: #000; color: #fff; padding: 2px 6px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.03em;">
-                    ${seal.type}
+                <div class="label-header">
+                  <div class="logo-area">
+                    ${logoHtml}
+                  </div>
+                  <div class="header-title-area">
+                    <span class="label-subtitle">CONTROL DE DESPACHO</span>
+                    <span class="label-badge">${seal.type.toUpperCase()}</span>
                   </div>
                 </div>
 
                 <!-- CONTENIDO PRINCIPAL -->
-                <div style="display: flex; flex: 1; align-items: center; gap: 4mm;">
-                  <!-- QR CODE -->
-                  <div style="width: 24mm; height: 24mm; display: flex; items-content: center; justify-content: center; border: 1px solid #ddd; padding: 1mm; background: #fff;">
-                    <img src="${qrUrl}" style="width: 10mm; height: 10mm; width: 100%; height: 100%; object-fit: contain;" referrerPolicy="no-referrer" />
+                <div class="label-body">
+                  <!-- COLUMNA IZQUIERDA: ESCANEO -->
+                  <div class="label-left">
+                    <div class="qr-box">
+                      <img src="${qrUrl}" class="qr-image" referrerPolicy="no-referrer" />
+                    </div>
+                    <div class="seal-pill">ESCANEABLE</div>
                   </div>
 
-                  <!-- METADATOS -->
-                  <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; line-height: 1.35; color: #000; font-family: monospace; font-size: 9px;">
-                    <div style="font-size: 13px; font-weight: 900; border-bottom: 1px dashed #000; padding-bottom: 1px; margin-bottom: 2px; word-break: break-all;">
-                      ID: ${seal.id}
+                  <!-- COLUMNA DERECHA: METADATOS -->
+                  <div class="label-right">
+                    <div class="id-wrapper">
+                      <span class="id-label">NÚMERO DE SELLO</span>
+                      <span class="id-value">${seal.id}</span>
                     </div>
-                    <div><strong>PLACA:</strong> ${moveData.vehiclePlate}</div>
-                    <div><strong>REMOLQUE:</strong> ${moveData.trailerContainer}</div>
-                    <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50mm;">
-                      <strong>REC:</strong> ${moveData.requester || '-'}
-                    </div>
-                    <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 50mm;">
-                      <strong>TRANS:</strong> ${moveData.deliveredSub || '-'}
+
+                    <div class="grid-details">
+                      <div class="grid-item">
+                        <span class="detail-label">PLACA</span>
+                        <span class="detail-val font-mono">${moveData.vehiclePlate || '-'}</span>
+                      </div>
+                      <div class="grid-item">
+                        <span class="detail-label">REMOLQUE</span>
+                        <span class="detail-val font-mono">${moveData.trailerContainer || '-'}</span>
+                      </div>
+                      <div class="grid-item grid-span-2">
+                        <span class="detail-label">ID CONTENEDOR</span>
+                        <span class="detail-val highlighted-val">${moveData.containerId || '-'}</span>
+                      </div>
+                      <div class="grid-item">
+                        <span class="detail-label">GUÍA / TRANS.</span>
+                        <span class="detail-val">${moveData.deliveredSub || '-'}</span>
+                      </div>
+                      <div class="grid-item">
+                        <span class="detail-label">RECEPTOR</span>
+                        <span class="detail-val truncate-text">${moveData.requester || '-'}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 <!-- PIE DE PAGINA -->
-                <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 3px; display: flex; justify-content: space-between; align-items: center; font-size: 7px; text-transform: uppercase; color: #333;">
-                  <span>Auxiliares | Nutresa</span>
-                  <span>${new Date().toLocaleString('es-ES')}</span>
+                <div class="label-footer">
+                  <span class="footer-system">GESTIÓN DE SELLOS — SERVICIOS NUTRESA</span>
+                  <span class="footer-date">${new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             `;
@@ -1202,7 +1224,7 @@ export default function App() {
                     width: 100mm;
                     height: 50mm;
                     border: 2px dashed #64748b;
-                    padding: 3mm 4mm;
+                    padding: 2.5mm 3.5mm;
                     margin: 15px auto;
                     background: white;
                     display: flex;
@@ -1211,6 +1233,168 @@ export default function App() {
                     page-break-after: always;
                     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
                     position: relative;
+                    box-sizing: border-box;
+                    color: black;
+                  }
+                  .label-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-bottom: 2px solid #000;
+                    padding-bottom: 0.8mm;
+                    margin-bottom: 1.2mm;
+                    height: 8mm;
+                  }
+                  .logo-area {
+                    display: flex;
+                    align-items: center;
+                  }
+                  .header-title-area {
+                    display: flex;
+                    align-items: center;
+                    gap: 1.5mm;
+                  }
+                  .label-subtitle {
+                    font-size: 7.5px;
+                    font-weight: 900;
+                    letter-spacing: 0.05em;
+                    color: #1e293b;
+                  }
+                  .label-badge {
+                    font-size: 8px;
+                    font-weight: 900;
+                    background: #000;
+                    color: #fff;
+                    padding: 1px 4px;
+                    border-radius: 2px;
+                    letter-spacing: 0.03em;
+                  }
+                  .label-body {
+                    display: flex;
+                    flex: 1;
+                    gap: 3mm;
+                    height: 29mm;
+                    align-items: stretch;
+                  }
+                  .label-left {
+                    width: 24mm;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    border-right: 1px dashed #000;
+                    padding-right: 2mm;
+                  }
+                  .qr-box {
+                    width: 20mm;
+                    height: 20mm;
+                    border: 1px solid #000;
+                    padding: 0.8mm;
+                    background: #fff;
+                  }
+                  .qr-image {
+                    width: 100%;
+                    height: 100%;
+                    object-fit: contain;
+                  }
+                  .seal-pill {
+                    font-size: 6px;
+                    font-weight: 900;
+                    color: #1e293b;
+                    letter-spacing: 0.06em;
+                    margin-top: 1mm;
+                  }
+                  .label-right {
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                  }
+                  .id-wrapper {
+                    display: flex;
+                    flex-direction: column;
+                    border: 1px solid #000;
+                    background: #f8fafc;
+                    padding: 1px 4px;
+                  }
+                  .id-label {
+                    font-size: 5.5px;
+                    font-weight: 900;
+                    color: #475569;
+                    letter-spacing: 0.04em;
+                  }
+                  .id-value {
+                    font-size: 11px;
+                    font-weight: 900;
+                    font-family: monospace;
+                    color: #000;
+                    line-height: 1.1;
+                  }
+                  .grid-details {
+                    display: grid;
+                    grid-template-columns: 1fr 1fr;
+                    gap: 1mm;
+                    flex: 1;
+                    padding-top: 1mm;
+                  }
+                  .grid-item {
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    border-bottom: 1px dashed #cbd5e1;
+                    padding-bottom: 1px;
+                  }
+                  .grid-span-2 {
+                    grid-column: span 2;
+                  }
+                  .detail-label {
+                    font-size: 5.5px;
+                    font-weight: 900;
+                    color: #475569;
+                    line-height: 1;
+                    margin-bottom: 1px;
+                  }
+                  .detail-val {
+                    font-size: 8px;
+                    font-weight: 850;
+                    color: #000;
+                    text-transform: uppercase;
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                  }
+                  .font-mono {
+                    font-family: monospace;
+                    font-weight: 900;
+                  }
+                  .highlighted-val {
+                    font-size: 8.5px;
+                    font-weight: 900;
+                    color: #000;
+                    font-family: monospace;
+                  }
+                  .truncate-text {
+                    max-width: 32mm;
+                  }
+                  .label-footer {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    border-top: 1.5px solid #000;
+                    padding-top: 0.8mm;
+                    margin-top: 1.5mm;
+                    height: 3.5mm;
+                  }
+                  .footer-system {
+                    font-size: 5.5px;
+                    font-weight: 900;
+                    color: #1e293b;
+                    letter-spacing: 0.04em;
+                  }
+                  .footer-date {
+                    font-size: 5.5px;
+                    font-weight: 800;
+                    color: #475569;
                   }
                   
                   @media print {
@@ -1509,6 +1693,10 @@ export default function App() {
                         <div className="space-y-1.5">
                           <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Número de Transporte</label>
                           <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Número de guía/transporte" />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">ID Contenedor</label>
+                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.containerId} onChange={e => setMoveData({...moveData, containerId: e.target.value.toUpperCase()})} placeholder="ID del contenedor" />
                         </div>
                       </>
                     ) : null}
