@@ -1671,7 +1671,7 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
               </h3>
               <button onClick={() => setIsMoveFormOpen(false)} className="hover:rotate-90 transition-transform">✕</button>
             </div>
-            <div className="p-6 space-y-5">
+            <div className="p-5 space-y-4">
               {targetStatus === selectedSeals[0].status ? (
                 <div className="space-y-4 text-center">
                   <p className={`text-[10px] font-black uppercase tracking-widest ${getStatusTextColor(selectedSeals[0].status)}`}>
@@ -1685,54 +1685,56 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
                   </div>
                 </div>
               ) : (
-                <div className="space-y-5">
-                  <div className="flex items-center justify-center gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                    <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border bg-white shadow-sm ${getStatusStyles(selectedSeals[0].status).split('icon-bg-')[0]}`}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-3 bg-slate-50 p-2.5 rounded-2xl border border-slate-100">
+                    <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg border bg-white shadow-sm ${getStatusStyles(selectedSeals[0].status).split('icon-bg-')[0]}`}>
                       {selectedSeals[0].status.replace('_', ' ')}
                     </span>
-                    <ICONS.ArrowRightTiny className="text-slate-300 w-4 h-4" />
-                    <span className={`text-[9px] font-black uppercase px-3 py-1.5 rounded-lg border bg-white shadow-sm ${targetStatus ? getStatusStyles(targetStatus).split('icon-bg-')[0] : ''}`}>
+                    <ICONS.ArrowRightTiny className="text-slate-300 w-3.5 h-3.5" />
+                    <span className={`text-[9px] font-black uppercase px-2.5 py-1 rounded-lg border bg-white shadow-sm ${targetStatus ? getStatusStyles(targetStatus).split('icon-bg-')[0] : ''}`}>
                       {targetStatus?.replace('_', ' ')}
                     </span>
                   </div>
                   
-                  <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-1 custom-scrollbar">
+                  <div className="space-y-3.5 max-h-[60vh] overflow-y-auto pr-1 custom-scrollbar">
                     {targetStatus === SealStatus.SALIDA_FABRICA ? (
                       <>
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Nombre del Receptor</label>
-                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.requester} onChange={e => setMoveData({...moveData, requester: e.target.value.toUpperCase()})} placeholder="Nombre del receptor" />
+                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-2.5 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.requester} onChange={e => setMoveData({...moveData, requester: e.target.value.toUpperCase()})} placeholder="Nombre del receptor" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5">
+                          <div className="space-y-1">
                             <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Placa (Obligatorio)</label>
-                            <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.vehiclePlate} onChange={e => setMoveData({...moveData, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC-123" />
+                            <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-2.5 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.vehiclePlate} onChange={e => setMoveData({...moveData, vehiclePlate: e.target.value.toUpperCase()})} placeholder="ABC-123" />
                           </div>
-                          <div className="space-y-1.5">
+                          <div className="space-y-1">
                             <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Remolque (Obligatorio)</label>
-                            <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.trailerContainer} onChange={e => setMoveData({...moveData, trailerContainer: e.target.value.toUpperCase()})} placeholder="Nro Remolque" />
+                            <input type="text" required className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-2.5 text-sm font-black font-mono text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.trailerContainer} onChange={e => setMoveData({...moveData, trailerContainer: e.target.value.toUpperCase()})} placeholder="Nro Remolque" />
                           </div>
                         </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Número de Transporte</label>
-                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Número de guía/transporte" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">ID Contenedor</label>
-                          <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.containerId} onChange={e => setMoveData({...moveData, containerId: e.target.value.toUpperCase()})} placeholder="ID del contenedor" />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Número de Transporte</label>
+                            <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-2.5 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.deliveredSub} onChange={e => setMoveData({...moveData, deliveredSub: e.target.value.toUpperCase()})} placeholder="Nro transporte" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">ID Contenedor</label>
+                            <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-2.5 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.containerId} onChange={e => setMoveData({...moveData, containerId: e.target.value.toUpperCase()})} placeholder="ID contenedor" />
+                          </div>
                         </div>
                       </>
                     ) : null}
                     
-                    <div className="space-y-1.5">
+                    <div className="space-y-1">
                       <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest ml-1">Observaciones</label>
-                      <textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase min-h-[80px] resize-none" value={moveData.observations} onChange={e => setMoveData({...moveData, observations: e.target.value.toUpperCase()})} placeholder="Detalles adicionales..." />
+                      <textarea className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-2 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase min-h-[60px] resize-none" value={moveData.observations} onChange={e => setMoveData({...moveData, observations: e.target.value.toUpperCase()})} placeholder="Detalles adicionales..." />
                     </div>
                   </div>
                   
-                  <div className="flex gap-4 pt-2">
-                    <button type="button" onClick={() => setTargetStatus(selectedSeals[0]?.status || null)} className="flex-1 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Atrás</button>
-                    <button onClick={handleConfirmMovement} className={`flex-1 text-white py-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all hover:-translate-y-1 active:scale-95 ${targetStatus === SealStatus.DESTRUIDO ? 'bg-red-600' : 'bg-custom-blue'}`}>Confirmar Sello</button>
+                  <div className="flex gap-4 pt-1">
+                    <button type="button" onClick={() => setTargetStatus(selectedSeals[0]?.status || null)} className="flex-1 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Atrás</button>
+                    <button onClick={handleConfirmMovement} className={`flex-1 text-white py-3 px-4 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl transition-all hover:-translate-y-0.5 active:scale-95 ${targetStatus === SealStatus.DESTRUIDO ? 'bg-red-600' : 'bg-custom-blue'}`}>Confirmar Sello</button>
                   </div>
                 </div>
               )}
