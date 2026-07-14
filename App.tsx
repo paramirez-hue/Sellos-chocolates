@@ -460,9 +460,18 @@ const SettingsView: React.FC<{
               onClick={async () => {
                 try {
                   const seals = await ApiService.getSeals();
-                  alert(`Conexión exitosa. Se encontraron ${seals.length} sellos en la base de datos.`);
-                } catch (e) {
-                  alert('Error de conexión. Verifique sus credenciales.');
+                  let writeStatus = "Lectura exitosa.";
+                  if (seals.length > 0) {
+                    const res = await ApiService.saveSeals(seals);
+                    if (res.success) {
+                      writeStatus += " Escritura/Upsert exitosa.";
+                    } else {
+                      writeStatus += ` Error al Guardar/Escribir: ${res.errorMessage}`;
+                    }
+                  }
+                  alert(`Supabase - Conexión: OK. ${writeStatus} (Total: ${seals.length} sellos)`);
+                } catch (e: any) {
+                  alert(`Error de conexión con Supabase: ${e.message || e}`);
                 }
               }}
               className="bg-white border border-slate-200 px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest text-custom-blue hover:bg-slate-100 transition-all"
@@ -721,12 +730,12 @@ const MovementsView: React.FC<{
 
 const DespachoScannerView: React.FC<{ 
   seals: Seal[]; 
-  onConfirmExit: (sealId: string) => void;
+  onConfirmExit: (sealIds: string | string[]) => void;
   user: User;
 }> = ({ seals, onConfirmExit, user }) => {
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirmedSeal, setConfirmedSeal] = useState<{ id: string; containerId: string; type: string; plate: string; time: string } | null>(null);
+  const [confirmedSeals, setConfirmedSeals] = useState<{ ids: string[]; containerId: string; types: string[]; plate: string; time: string } | null>(null);
 
   useEffect(() => {
     const scanner = new Html5QrcodeScanner(
@@ -772,27 +781,46 @@ const DespachoScannerView: React.FC<{
         }
       }
       
-      const foundSeal = seals.find(s => s.id.toUpperCase() === sealId.toUpperCase());
-      if (foundSeal) {
-        if (foundSeal.status === SealStatus.SALIDA_FABRICA) {
-          onConfirmExit(foundSeal.id);
-          
-          const finalContainerId = (containerId && containerId !== '-') ? containerId : (foundSeal.containerId || '-');
-          const finalPlate = (plate && plate !== '-') ? plate : '-';
-
-          setConfirmedSeal({
-            id: foundSeal.id,
-            containerId: finalContainerId,
-            type: foundSeal.type || type,
-            plate: finalPlate,
-            time: new Date().toLocaleString('es-ES')
-          });
-        } else {
-          setError(`El sello ${sealId} no está listo para salida (Estado actual: ${foundSeal.status})`);
-        }
-      } else {
-        setError(`Sello "${sealId}" no encontrado en el sistema.`);
+      // Separar por comas si es un lote
+      const sealIds = sealId.split(',').map(id => id.trim().toUpperCase()).filter(id => id !== '');
+      
+      if (sealIds.length === 0) {
+        setError("No se encontraron IDs de precintos válidos en el código QR.");
+        return;
       }
+
+      // Buscar todos los sellos correspondientes
+      const foundSeals = seals.filter(s => sealIds.includes(s.id.toUpperCase()));
+      const foundIds = foundSeals.map(s => s.id.toUpperCase());
+      const missingIds = sealIds.filter(id => !foundIds.includes(id));
+
+      if (missingIds.length > 0) {
+        setError(`Los siguientes sellos no se encontraron en el sistema: ${missingIds.join(', ')}`);
+        return;
+      }
+
+      // Validar estados
+      const invalidStatusSeals = foundSeals.filter(s => s.status !== SealStatus.SALIDA_FABRICA);
+      if (invalidStatusSeals.length > 0) {
+        const invalidDetails = invalidStatusSeals.map(s => `${s.id} (Estado: ${s.status})`).join(', ');
+        setError(`Error de validación: Algunos sellos no están listos para salida: ${invalidDetails}`);
+        return;
+      }
+
+      // Si todos son válidos, confirmamos salida de todo el lote
+      onConfirmExit(sealIds);
+
+      const finalContainerId = (containerId && containerId !== '-') ? containerId : (foundSeals[0].containerId || '-');
+      const finalPlate = (plate && plate !== '-') ? plate : '-';
+      const types = Array.from(new Set(foundSeals.map(s => s.type || type)));
+
+      setConfirmedSeals({
+        ids: foundSeals.map(s => s.id),
+        containerId: finalContainerId,
+        types: types,
+        plate: finalPlate,
+        time: new Date().toLocaleString('es-ES')
+      });
     };
 
     scanner.render(onScanSuccess, (err) => console.warn(err));
@@ -803,7 +831,7 @@ const DespachoScannerView: React.FC<{
   }, [seals, onConfirmExit]);
 
   const handleCloseConfirmation = () => {
-    setConfirmedSeal(null);
+    setConfirmedSeals(null);
     setScanResult(null);
     setError(null);
     window.location.reload();
@@ -816,10 +844,10 @@ const DespachoScannerView: React.FC<{
         <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Sede Operativa: <span className="text-custom-blue">{user.city}</span></p>
       </div>
 
-      <div className={`mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 transition-all duration-300 ${confirmedSeal ? 'max-w-xs p-5 space-y-4' : 'max-w-md p-8 space-y-6'}`}>
+      <div className={`mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 transition-all duration-300 ${confirmedSeals ? 'max-w-xs p-5 space-y-4' : 'max-w-md p-8 space-y-6'}`}>
         
         {/* Scanner Element remains in DOM to avoid html5-qrcode mount/unmount crashes, but is visually hidden when confirmed */}
-        <div className={confirmedSeal ? "hidden" : "space-y-6"}>
+        <div className={confirmedSeals ? "hidden" : "space-y-6"}>
           <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
           
           {scanResult && !error && (
@@ -844,7 +872,7 @@ const DespachoScannerView: React.FC<{
         </div>
 
         {/* Ventana/Vista de Confirmación de Salida Exitosa */}
-        {confirmedSeal && (
+        {confirmedSeals && (
           <div className="space-y-4 animate-in zoom-in duration-200 text-center">
             <div className="w-12 h-12 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
               <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
@@ -854,40 +882,50 @@ const DespachoScannerView: React.FC<{
 
             <div className="space-y-0.5">
               <h4 className="text-base font-black text-emerald-800 uppercase tracking-tight">Salida Confirmada</h4>
-              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Movimiento de Precinto Registrado</p>
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                {confirmedSeals.ids.length > 1 ? `${confirmedSeals.ids.length} Movimientos Registrados` : 'Movimiento de Precinto Registrado'}
+              </p>
             </div>
 
             <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 text-left space-y-1.5 text-xs">
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">ID Sello:</span>
-                <span className="font-mono font-black text-slate-900">{confirmedSeal.id}</span>
+              <div className="flex flex-col gap-1 text-[11px] border-b border-slate-200 pb-1.5">
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-black">IDs Sellos Despachados:</span>
+                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar pt-1">
+                  {confirmedSeals.ids.map(id => (
+                    <span key={id} className="font-mono font-black text-[10px] bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded border border-slate-300">
+                      {id}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
-                <span className="font-black bg-slate-900 text-white px-1.5 py-0.5 rounded text-[9px] uppercase">{confirmedSeal.type}</span>
+                <span className="font-black bg-slate-900 text-white px-1.5 py-0.5 rounded text-[9px] uppercase">
+                  {confirmedSeals.types.join(', ')}
+                </span>
               </div>
-              {confirmedSeal.plate && confirmedSeal.plate !== '-' && (
+              {confirmedSeals.plate && confirmedSeals.plate !== '-' && (
                 <div className="flex justify-between items-center text-[11px]">
                   <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
-                  <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeal.plate}</span>
+                  <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeals.plate}</span>
                 </div>
               )}
               <div className="flex justify-between items-center text-[11px]">
                 <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
-                <span className="font-medium text-slate-600">{confirmedSeal.time}</span>
+                <span className="font-medium text-slate-600">{confirmedSeals.time}</span>
               </div>
             </div>
 
             {/* Parte inferior: Información de ID Contenedor con mensaje de ID Verificado */}
             <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-0.5">
               <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
-              <p className="text-sm font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeal.containerId}</p>
+              <p className="text-sm font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeals.containerId}</p>
               
               <div className="flex items-center justify-center gap-1 text-emerald-600 font-bold">
                 <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span className="text-[9px] font-black uppercase tracking-widest">ID Verificado</span>
+                <span className="text-[9px] font-black uppercase tracking-widest">IDs Verificados ({confirmedSeals.ids.length})</span>
               </div>
             </div>
 
@@ -1031,6 +1069,7 @@ export default function App() {
   const [targetStatus, setTargetStatus] = useState<SealStatus | null>(null);
   const [isMoveFormOpen, setIsMoveFormOpen] = useState(false);
   const [moveData, setMoveData] = useState({ requester: '', observations: '', vehiclePlate: '', trailerContainer: '', deliveredSub: '', containerId: '' });
+  const [singleLabelPerBatch, setSingleLabelPerBatch] = useState(true);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [isDeleteModeActive, setIsDeleteModeActive] = useState(false);
   
@@ -1091,13 +1130,16 @@ export default function App() {
     loadData();
   }, []);
 
-  useEffect(() => { if (isInitialLoadDone && seals.length > 0) ApiService.saveSeals(seals).then(success => { if (!success) setToast({ message: 'Error al sincronizar precintos con la nube.', type: 'error' }); }); }, [seals, isInitialLoadDone]);
+  useEffect(() => { if (isInitialLoadDone && seals.length > 0) ApiService.saveSeals(seals).then(res => { if (!res.success) setToast({ message: `Error al sincronizar precintos: ${res.errorMessage}`, type: 'error' }); }); }, [seals, isInitialLoadDone]);
   useEffect(() => { if (isInitialLoadDone && users.length > 0) ApiService.saveUsers(users).then(success => { if (!success) setToast({ message: 'Error al sincronizar usuarios con la nube.', type: 'error' }); }); }, [users, isInitialLoadDone]);
   useEffect(() => { if (isInitialLoadDone) ApiService.saveCities(cities).then(success => { if (!success) setToast({ message: 'Error al sincronizar ciudades con la nube.', type: 'error' }); }); }, [cities, isInitialLoadDone]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); } }, [toast]);
 
   const handleRestoreDB = async (data: any) => {
-    if (data.seals) await ApiService.saveSeals(data.seals);
+    if (data.seals) {
+      const res = await ApiService.saveSeals(data.seals);
+      if (!res.success) alert(`Error al restaurar sellos: ${res.errorMessage}`);
+    }
     if (data.users) await ApiService.saveUsers(data.users);
     if (data.cities) await ApiService.saveCities(data.cities);
     if (data.settings) await ApiService.saveSettings(data.settings);
@@ -1144,10 +1186,12 @@ export default function App() {
     setSeals(seals.map(s => s.city?.toUpperCase() === oldCity.toUpperCase() ? { ...s, city: newCity.toUpperCase() } : s)); 
   };
 
-  const handleConfirmExit = (id: string) => {
+  const handleConfirmExit = (ids: string | string[]) => {
     const now = new Date().toLocaleString('es-ES');
+    const idArray = Array.isArray(ids) ? ids.map(id => id.toUpperCase()) : [ids.toUpperCase()];
+    
     setSeals(prev => prev.map(s => 
-      s.id.toUpperCase() === id.toUpperCase() 
+      idArray.includes(s.id.toUpperCase()) 
         ? { 
             ...s, 
             status: SealStatus.DESPACHADO, 
@@ -1156,7 +1200,7 @@ export default function App() {
           } 
         : s
     ));
-    setToast({message: `SALIDA CONFIRMADA: ${id}`, type: 'success'});
+    setToast({message: `SALIDA CONFIRMADA: ${idArray.join(', ')}`, type: 'success'});
   };
   
   const checkSealDuplicate = (id: string, type: string) => seals.some(s => s.id.toUpperCase() === id.toUpperCase() && s.type.toUpperCase() === type.toUpperCase());
@@ -1266,9 +1310,12 @@ export default function App() {
             ? `<img src="${appSettings.logo}" style="height: 10mm; max-width: 45mm; object-fit: contain;" referrerPolicy="no-referrer" />`
             : `<div style="font-size: 14px; font-weight: 900; color: #003594; letter-spacing: 0.05em; text-transform: uppercase;">${appSettings.title.toUpperCase()}</div>`;
 
-          const labelsHtml = selectedSeals.map((seal, i) => {
-            const qrData = `SELLO: ${seal.id}
-TIPO: ${seal.type}
+          let labelsHtml = "";
+          if (singleLabelPerBatch && selectedSeals.length > 1) {
+            const combinedIds = selectedSeals.map(s => s.id).join(', ');
+            const combinedTypes = Array.from(new Set(selectedSeals.map(s => s.type))).join(', ');
+            const qrData = `SELLO: ${combinedIds}
+TIPO: ${combinedTypes}
 PLACA: ${moveData.vehiclePlate || '-'}
 REMOLQUE: ${moveData.trailerContainer || '-'}
 CONTENEDOR: ${moveData.containerId || '-'}
@@ -1276,7 +1323,7 @@ TRANSPORTE: ${moveData.deliveredSub || '-'}
 RECEPTOR: ${moveData.requester || '-'}
 FECHA: ${new Date().toLocaleString('es-ES')}`;
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
-            return `
+            labelsHtml = `
               <div class="label-tag">
                 <!-- CABECERA -->
                 <div class="label-header">
@@ -1287,14 +1334,21 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
                     PLACA: ${moveData.vehiclePlate ? moveData.vehiclePlate.toUpperCase() : '-'}
                   </div>
                   <div class="badge-area">
-                    <span class="label-badge">${seal.type.toUpperCase()}</span>
+                    <span class="label-badge">LOTE (${selectedSeals.length})</span>
                   </div>
                 </div>
 
                 <!-- CONTENIDO PRINCIPAL -->
-                <div class="label-body">
-                  <div class="qr-box">
+                <div class="label-body" style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; width: 100%; height: 36mm; gap: 4mm;">
+                  <div class="qr-box" style="width: 32mm; height: 32mm; flex-shrink: 0;">
                     <img src="${qrUrl}" class="qr-image" referrerPolicy="no-referrer" />
+                  </div>
+                  <div class="batch-details" style="flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: left; font-size: 10px; line-height: 1.3;">
+                    <div style="font-weight: 900; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 4px; font-size: 11px; text-transform: uppercase;">Detalle de Sellos:</div>
+                    <div class="seals-list" style="font-family: monospace; font-weight: 900; font-size: 10px; color: #000; word-break: break-all; max-height: 22mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;">
+                      ${combinedIds}
+                    </div>
+                    <div style="margin-top: 4px; font-size: 8px; font-weight: bold; color: #555;">TIPO: ${combinedTypes.toUpperCase()}</div>
                   </div>
                 </div>
 
@@ -1305,7 +1359,48 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
                 </div>
               </div>
             `;
-          }).join('');
+          } else {
+            labelsHtml = selectedSeals.map((seal, i) => {
+              const qrData = `SELLO: ${seal.id}
+TIPO: ${seal.type}
+PLACA: ${moveData.vehiclePlate || '-'}
+REMOLQUE: ${moveData.trailerContainer || '-'}
+CONTENEDOR: ${moveData.containerId || '-'}
+TRANSPORTE: ${moveData.deliveredSub || '-'}
+RECEPTOR: ${moveData.requester || '-'}
+FECHA: ${new Date().toLocaleString('es-ES')}`;
+              const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+              return `
+                <div class="label-tag">
+                  <!-- CABECERA -->
+                  <div class="label-header">
+                    <div class="logo-area">
+                      ${logoHtml}
+                    </div>
+                    <div class="placa-title">
+                      PLACA: ${moveData.vehiclePlate ? moveData.vehiclePlate.toUpperCase() : '-'}
+                    </div>
+                    <div class="badge-area">
+                      <span class="label-badge">${seal.type.toUpperCase()}</span>
+                    </div>
+                  </div>
+
+                  <!-- CONTENIDO PRINCIPAL -->
+                  <div class="label-body">
+                    <div class="qr-box">
+                      <img src="${qrUrl}" class="qr-image" referrerPolicy="no-referrer" />
+                    </div>
+                  </div>
+
+                  <!-- PIE DE PAGINA -->
+                  <div class="label-footer">
+                    <span class="footer-system">AUXILIARES | NUTRESA</span>
+                    <span class="footer-date">${new Date().toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          }
 
           printWindow.document.write(`
             <!DOCTYPE html>
@@ -1483,7 +1578,7 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
               </head>
               <body>
                 <div class="print-bar no-print">
-                  <span style="font-size: 11px; font-weight: 600;">Impresión lista (${selectedSeals.length} etiquetas)</span>
+                  <span style="font-size: 11px; font-weight: 600;">Impresión lista (${singleLabelPerBatch && selectedSeals.length > 1 ? '1' : selectedSeals.length} etiquetas)</span>
                   <button class="btn-action" onclick="window.print()">Imprimir de nuevo</button>
                 </div>
 
@@ -1736,6 +1831,20 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
                             <input type="text" className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-2.5 text-sm font-bold text-custom-blue outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all uppercase" value={moveData.containerId} onChange={e => setMoveData({...moveData, containerId: e.target.value.toUpperCase()})} placeholder="ID contenedor" />
                           </div>
                         </div>
+                        {selectedSeals.length > 1 && (
+                          <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 p-3 rounded-xl">
+                            <input 
+                              type="checkbox" 
+                              id="toggle-single-label" 
+                              checked={singleLabelPerBatch} 
+                              onChange={e => setSingleLabelPerBatch(e.target.checked)} 
+                              className="w-4 h-4 text-custom-blue rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <label htmlFor="toggle-single-label" className="text-[10px] font-black text-custom-blue uppercase tracking-wider cursor-pointer select-none">
+                              Generar una sola etiqueta para todo el lote
+                            </label>
+                          </div>
+                        )}
                       </>
                     ) : null}
                     

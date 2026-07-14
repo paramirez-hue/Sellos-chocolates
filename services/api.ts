@@ -23,19 +23,29 @@ export const ApiService = {
     }
   },
 
-  async saveSeals(seals: Seal[]): Promise<boolean> {
+  async saveSeals(seals: Seal[]): Promise<{ success: boolean; errorMessage?: string }> {
     try {
       // En Supabase podemos usar upsert para guardar todo el lote
       const { error } = await supabase
         .from('seals')
         .upsert(seals, { onConflict: 'id' });
 
-      if (error) throw error;
-      return true;
-    } catch (error) {
-      console.error('Supabase Save Error (Seals):', error);
+      if (error) {
+        console.error('Supabase Save Error (Seals) - Details:', error);
+        localStorage.setItem('selloData', JSON.stringify(seals));
+        return {
+          success: false,
+          errorMessage: `${error.message || 'Error desconocido'} (Código: ${error.code || 'N/A'}). Detalle: ${error.details || 'N/A'}${error.hint ? '. Ayuda: ' + error.hint : ''}`
+        };
+      }
+      return { success: true };
+    } catch (error: any) {
+      console.error('Supabase Save Exception (Seals):', error);
       localStorage.setItem('selloData', JSON.stringify(seals));
-      return false;
+      return {
+        success: false,
+        errorMessage: error?.message || 'Error de conexión de red o excepción inesperada.'
+      };
     }
   },
 
