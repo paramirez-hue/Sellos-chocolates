@@ -93,7 +93,7 @@ export const ApiService = {
     }
   },
 
-  async saveUsers(users: User[]): Promise<boolean> {
+  async saveUsers(users: User[]): Promise<{ success: boolean; errorMessage?: string }> {
     try {
       const { error } = await supabase
         .from('users')
@@ -102,13 +102,19 @@ export const ApiService = {
       if (error) {
         console.error('Supabase Save Error (Users) - database returned error object:', error);
         localStorage.setItem('selloUsers', JSON.stringify(users));
-        return false;
+        return {
+          success: false,
+          errorMessage: `${error.message || 'Error desconocido'} (Código: ${error.code || 'N/A'}). Detalle: ${error.details || 'N/A'}`
+        };
       }
-      return true;
-    } catch (err) {
+      return { success: true };
+    } catch (err: any) {
       console.error('Supabase Save Exception (Users):', err);
       localStorage.setItem('selloUsers', JSON.stringify(users));
-      return false;
+      return {
+        success: false,
+        errorMessage: err?.message || 'Error de conexión de red o excepción inesperada.'
+      };
     }
   },
 

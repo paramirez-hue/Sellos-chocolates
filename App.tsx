@@ -459,17 +459,31 @@ const SettingsView: React.FC<{
             <button 
               onClick={async () => {
                 try {
-                  const seals = await ApiService.getSeals();
-                  let writeStatus = "Lectura exitosa.";
-                  if (seals.length > 0) {
-                    const res = await ApiService.saveSeals(seals);
-                    if (res.success) {
-                      writeStatus += " Escritura/Upsert exitosa.";
+                  // Probar Sellos
+                  const sealsData = await ApiService.getSeals();
+                  let writeStatusSeals = "Lectura OK.";
+                  if (sealsData.length > 0) {
+                    const resSeals = await ApiService.saveSeals(sealsData);
+                    if (resSeals.success) {
+                      writeStatusSeals += " Escritura OK.";
                     } else {
-                      writeStatus += ` Error al Guardar/Escribir: ${res.errorMessage}`;
+                      writeStatusSeals += ` Error Escritura: ${resSeals.errorMessage}`;
                     }
                   }
-                  alert(`Supabase - Conexión: OK. ${writeStatus} (Total: ${seals.length} sellos)`);
+                  
+                  // Probar Usuarios
+                  const usersData = await ApiService.getUsers();
+                  let writeStatusUsers = "Lectura OK.";
+                  if (usersData.length > 0) {
+                    const resUsers = await ApiService.saveUsers(usersData);
+                    if (resUsers.success) {
+                      writeStatusUsers += " Escritura OK.";
+                    } else {
+                      writeStatusUsers += ` Error Escritura: ${resUsers.errorMessage}`;
+                    }
+                  }
+                  
+                  alert(`Supabase - Resultados:\n\n1. PRECINTOS:\n- Conexión: OK\n- Estado: ${writeStatusSeals}\n- Cantidad: ${sealsData.length} en base de datos\n\n2. USUARIOS:\n- Conexión: OK\n- Estado: ${writeStatusUsers}\n- Cantidad: ${usersData.length} en base de datos`);
                 } catch (e: any) {
                   alert(`Error de conexión con Supabase: ${e.message || e}`);
                 }
@@ -1131,7 +1145,7 @@ export default function App() {
   }, []);
 
   useEffect(() => { if (isInitialLoadDone && seals.length > 0) ApiService.saveSeals(seals).then(res => { if (!res.success) setToast({ message: `Error al sincronizar precintos: ${res.errorMessage}`, type: 'error' }); }); }, [seals, isInitialLoadDone]);
-  useEffect(() => { if (isInitialLoadDone && users.length > 0) ApiService.saveUsers(users).then(success => { if (!success) setToast({ message: 'Error al sincronizar usuarios con la nube.', type: 'error' }); }); }, [users, isInitialLoadDone]);
+  useEffect(() => { if (isInitialLoadDone && users.length > 0) ApiService.saveUsers(users).then(res => { if (!res.success) setToast({ message: `Error al sincronizar usuarios: ${res.errorMessage}`, type: 'error' }); }); }, [users, isInitialLoadDone]);
   useEffect(() => { if (isInitialLoadDone) ApiService.saveCities(cities).then(success => { if (!success) setToast({ message: 'Error al sincronizar ciudades con la nube.', type: 'error' }); }); }, [cities, isInitialLoadDone]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 4000); return () => clearTimeout(timer); } }, [toast]);
 
