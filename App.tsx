@@ -754,13 +754,160 @@ const DespachoScannerView: React.FC<{
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [scannerSessionId, setScannerSessionId] = useState(0);
   const [countdown, setCountdown] = useState<number | null>(null);
+  
+  // Optimizaciones para Dispositivos Móviles y Handhelds (Lectores Láser)
+  const [scannerMode, setScannerMode] = useState<'camera' | 'laser'>(() => {
+    return (localStorage.getItem('sello_scanner_mode') as 'camera' | 'laser') || 'camera';
+  });
+  const [laserInput, setLaserInput] = useState('');
+  const [isInputFocused, setIsInputFocused] = useState(true);
+  const [recentScans, setRecentScans] = useState<Array<{
+    id: string;
+    time: string;
+    success: boolean;
+    details: string;
+    containerId?: string;
+  }>>([]);
+  const [justScannedId, setJustScannedId] = useState<string | null>(null);
 
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Guardar el modo del escáner en localStorage
+  const handleModeChange = (mode: 'camera' | 'laser') => {
+    setScannerMode(mode);
+    localStorage.setItem('sello_scanner_mode', mode);
+    setError(null);
+    setScanResult(null);
+    setConfirmedSeals(null);
+    if (mode === 'laser') {
+      setTimeout(() => inputRef.current?.focus(), 100);
+    }
+  };
+
+  // Sonido y vibración para ambientes industriales ruidosos (Zebra, Honeywell, Handhelds, Celulares)
+  const playBeep = (type: 'success' | 'error') => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const audioCtx = new AudioContextClass();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      if (type === 'success') {
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // Pitch alto y agradable (A5)
+        gainNode.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.12);
+      } else {
+        oscillator.type = 'triangle';
+        oscillator.frequency.setValueAtTime(220, audioCtx.currentTime); // Pitch bajo (A3) para indicar advertencia
+        gainNode.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.35);
+      }
+    } catch (e) {
+      console.warn("Audio feedback not supported or blocked by browser policy", e);
+    }
+  };
+
+  const triggerVibration = (type: 'success' | 'error') => {
+    if (navigator.vibrate) {
+      if (type === 'success') {
+        navigator.vibrate(100);
+      } else {
+        navigator.vibrate([120, 80, 120]);
+      }
+    }
+  };
+
+  // Función unificada para procesar códigos QR o de barras
+  const processCode = (decodedText: string): { success: boolean; errorMsg?: string; data?: any } => {
+    let sealId = decodedText.trim();
+    let containerId = '-';
+    let type = 'BOTELLA';
+    let plate = '-';
+    const qrDataObj: { [key: string]: string } = {};
+
+    const upperText = decodedText.toUpperCase();
+    if (upperText.includes("SELLO:") || upperText.includes("CONTENEDOR:") || upperText.includes("PLACA:")) {
+      const lines = decodedText.split('\n');
+      lines.forEach(line => {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx !== -1) {
+          const key = line.substring(0, colonIdx).trim().toUpperCase();
+          const val = line.substring(colonIdx + 1).trim();
+          qrDataObj[key] = val;
+        }
+      });
+      if (qrDataObj["SELLO"]) {
+        sealId = qrDataObj["SELLO"];
+      }
+      if (qrDataObj["CONTENEDOR"]) {
+        containerId = qrDataObj["CONTENEDOR"];
+      } else if (qrDataObj["ID CONTENEDOR"]) {
+        containerId = qrDataObj["ID CONTENEDOR"];
+      }
+      if (qrDataObj["TIPO"]) {
+        type = qrDataObj["TIPO"];
+      }
+      if (qrDataObj["PLACA"]) {
+        plate = qrDataObj["PLACA"];
+      }
+    }
+    
+    // Separar por comas si es un lote
+    const sealIds = sealId.split(',').map(id => id.trim().toUpperCase()).filter(id => id !== '');
+    
+    if (sealIds.length === 0) {
+      return { success: false, errorMsg: "No se encontraron IDs de precintos válidos en la lectura." };
+    }
+
+    // Buscar todos los sellos correspondientes en inventario local
+    const foundSeals = seals.filter(s => sealIds.includes(s.id.toUpperCase()));
+    const foundIds = foundSeals.map(s => s.id.toUpperCase());
+    const missingIds = sealIds.filter(id => !foundIds.includes(id));
+
+    if (missingIds.length > 0) {
+      return { success: false, errorMsg: `Sellos no encontrados en el sistema: ${missingIds.join(', ')}` };
+    }
+
+    // Validar estados (Deben estar listos para Salida Fábrica)
+    const invalidStatusSeals = foundSeals.filter(s => s.status !== SealStatus.SALIDA_FABRICA);
+    if (invalidStatusSeals.length > 0) {
+      const invalidDetails = invalidStatusSeals.map(s => `${s.id} (${s.status})`).join(', ');
+      return { success: false, errorMsg: `No listos para despacho: ${invalidDetails}` };
+    }
+
+    // Confirmar la salida de fábrica en el sistema
+    onConfirmExit(sealIds);
+
+    const finalContainerId = (containerId && containerId !== '-') ? containerId : (foundSeals[0].containerId || '-');
+    const finalPlate = (plate && plate !== '-') ? plate : '-';
+    const types = Array.from(new Set(foundSeals.map(s => s.type || type)));
+
+    return {
+      success: true,
+      data: {
+        ids: foundSeals.map(s => s.id),
+        containerId: finalContainerId,
+        types: types,
+        plate: finalPlate,
+        time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      }
+    };
+  };
+
+  // Manejo de Cámara Web
   useEffect(() => {
-    if (!isCameraActive) return;
+    if (scannerMode !== 'camera' || !isCameraActive) return;
 
     const scanner = new Html5QrcodeScanner(
       "reader",
-      { fps: 10, qrbox: { width: 250, height: 250 } },
+      { fps: 12, qrbox: { width: 250, height: 250 } },
       /* verbose= */ false
     );
 
@@ -768,79 +915,27 @@ const DespachoScannerView: React.FC<{
       setScanResult(decodedText);
       scanner.clear().catch(e => console.warn("Scanner clear error on success", e));
       
-      let sealId = decodedText.trim();
-      let containerId = '-';
-      let type = 'BOTELLA';
-      let plate = '-';
-      const qrDataObj: { [key: string]: string } = {};
-
-      const upperText = decodedText.toUpperCase();
-      if (upperText.includes("SELLO:") || upperText.includes("CONTENEDOR:") || upperText.includes("PLACA:")) {
-        const lines = decodedText.split('\n');
-        lines.forEach(line => {
-          const colonIdx = line.indexOf(':');
-          if (colonIdx !== -1) {
-            const key = line.substring(0, colonIdx).trim().toUpperCase();
-            const val = line.substring(colonIdx + 1).trim();
-            qrDataObj[key] = val;
-          }
-        });
-        if (qrDataObj["SELLO"]) {
-          sealId = qrDataObj["SELLO"];
-        }
-        if (qrDataObj["CONTENEDOR"]) {
-          containerId = qrDataObj["CONTENEDOR"];
-        } else if (qrDataObj["ID CONTENEDOR"]) {
-          containerId = qrDataObj["ID CONTENEDOR"];
-        }
-        if (qrDataObj["TIPO"]) {
-          type = qrDataObj["TIPO"];
-        }
-        if (qrDataObj["PLACA"]) {
-          plate = qrDataObj["PLACA"];
-        }
-      }
+      const res = processCode(decodedText);
       
-      // Separar por comas si es un lote
-      const sealIds = sealId.split(',').map(id => id.trim().toUpperCase()).filter(id => id !== '');
-      
-      if (sealIds.length === 0) {
-        setError("No se encontraron IDs de precintos válidos en el código QR.");
-        return;
+      const newScanEntry = {
+        id: decodedText.length > 35 ? decodedText.substring(0, 32) + '...' : decodedText,
+        time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        success: res.success,
+        details: res.success ? `Salida confirmada con éxito` : (res.errorMsg || 'Inconsistencia de datos'),
+        containerId: res.data?.containerId
+      };
+
+      setRecentScans(prev => [newScanEntry, ...prev]);
+
+      if (res.success) {
+        playBeep('success');
+        triggerVibration('success');
+        setConfirmedSeals(res.data);
+      } else {
+        playBeep('error');
+        triggerVibration('error');
+        setError(res.errorMsg || 'Error de validación');
       }
-
-      // Buscar todos los sellos correspondientes
-      const foundSeals = seals.filter(s => sealIds.includes(s.id.toUpperCase()));
-      const foundIds = foundSeals.map(s => s.id.toUpperCase());
-      const missingIds = sealIds.filter(id => !foundIds.includes(id));
-
-      if (missingIds.length > 0) {
-        setError(`Los siguientes sellos no se encontraron en el sistema: ${missingIds.join(', ')}`);
-        return;
-      }
-
-      // Validar estados
-      const invalidStatusSeals = foundSeals.filter(s => s.status !== SealStatus.SALIDA_FABRICA);
-      if (invalidStatusSeals.length > 0) {
-        const invalidDetails = invalidStatusSeals.map(s => `${s.id} (Estado: ${s.status})`).join(', ');
-        setError(`Error de validación: Algunos sellos no están listos para salida: ${invalidDetails}`);
-        return;
-      }
-
-      // Si todos son válidos, confirmamos salida de todo el lote
-      onConfirmExit(sealIds);
-
-      const finalContainerId = (containerId && containerId !== '-') ? containerId : (foundSeals[0].containerId || '-');
-      const finalPlate = (plate && plate !== '-') ? plate : '-';
-      const types = Array.from(new Set(foundSeals.map(s => s.type || type)));
-
-      setConfirmedSeals({
-        ids: foundSeals.map(s => s.id),
-        containerId: finalContainerId,
-        types: types,
-        plate: finalPlate,
-        time: new Date().toLocaleString('es-ES')
-      });
     };
 
     scanner.render(onScanSuccess, (err) => console.warn(err));
@@ -848,11 +943,11 @@ const DespachoScannerView: React.FC<{
     return () => {
       scanner.clear().catch(e => console.warn("Scanner clear error", e));
     };
-  }, [seals, onConfirmExit, scannerSessionId, isCameraActive]);
+  }, [seals, onConfirmExit, scannerSessionId, isCameraActive, scannerMode]);
 
-  // Manejo de redirección automática al escáner tras confirmación exitosa
+  // Manejo de Redirección Automática / Cuenta Regresiva en modo Cámara
   useEffect(() => {
-    if (!confirmedSeals) {
+    if (!confirmedSeals || scannerMode !== 'camera') {
       setCountdown(null);
       return;
     }
@@ -874,7 +969,43 @@ const DespachoScannerView: React.FC<{
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [confirmedSeals]);
+  }, [confirmedSeals, scannerMode]);
+
+  // Manejo de Lectura de Pistola Láser o Lector de Mano (Handheld)
+  const handleLaserSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const rawCode = laserInput.trim();
+    if (!rawCode) return;
+
+    setLaserInput(''); // Limpiar campo inmediatamente para permitir el próximo disparo de láser
+
+    const res = processCode(rawCode);
+
+    const newScanEntry = {
+      id: rawCode.toUpperCase(),
+      time: new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      success: res.success,
+      details: res.success ? 'Salida confirmada de fábrica' : (res.errorMsg || 'Error de lectura'),
+      containerId: res.data?.containerId
+    };
+
+    setRecentScans(prev => [newScanEntry, ...prev]);
+
+    if (res.success) {
+      playBeep('success');
+      triggerVibration('success');
+      setJustScannedId(rawCode.toUpperCase());
+      setTimeout(() => setJustScannedId(null), 1500);
+    } else {
+      playBeep('error');
+      triggerVibration('error');
+    }
+
+    // Forzar el enfoque de vuelta en el campo para el siguiente escaneo físico
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 80);
+  };
 
   const handleNextScan = () => {
     setConfirmedSeals(null);
@@ -903,155 +1034,373 @@ const DespachoScannerView: React.FC<{
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <div>
-        <h3 className="text-2xl font-black text-custom-blue uppercase tracking-tighter italic">Control Escáner Salida</h3>
-        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Sede Operativa: <span className="text-custom-blue">{user.city}</span></p>
-      </div>
-
-      {!isCameraActive ? (
-        <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 p-8 text-center space-y-6">
-          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <div className="space-y-2">
-            <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Cámara en Pausa</h4>
-            <p className="text-[10px] text-slate-500 font-bold leading-relaxed uppercase tracking-wide">
-              La cámara se ha desactivado para ahorrar batería. Reactívela para continuar escaneando precintos.
-            </p>
-          </div>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      
+      {/* Encabezado Responsivo */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <h3 className="text-xl sm:text-2xl font-black text-custom-blue uppercase tracking-tighter italic">Control Salida Fábrica</h3>
+          <p className="text-[10px] sm:text-xs text-slate-500 font-bold uppercase tracking-widest mt-0.5">Sede Operativa: <span className="text-custom-blue">{user.city}</span></p>
+        </div>
+        
+        {/* Selector de Modo de Escaneo (Cámara vs Pistola Láser/Handheld) */}
+        <div className="bg-slate-100 p-1 rounded-xl flex border border-slate-200 w-full sm:w-auto shadow-sm">
           <button 
-            onClick={handleStartCamera} 
-            className="w-full bg-custom-blue hover:bg-black text-white font-black py-3.5 rounded-2xl transition-all shadow-lg text-xs uppercase tracking-widest"
+            onClick={() => handleModeChange('camera')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${scannerMode === 'camera' ? 'bg-white text-custom-blue shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
           >
-            Activar Cámara / Iniciar Escaneo
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+            </svg>
+            Cámara Celular/Tablet
+          </button>
+          <button 
+            onClick={() => handleModeChange('laser')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 ${scannerMode === 'laser' ? 'bg-white text-custom-blue shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 12v1.5m0 0v1.5m0-1.5h1.5m-1.5 0h-1.5M12 18.75h1.5m1.5 0h1.5m-9 0h.008v.008H6v-.008z" />
+            </svg>
+            Pistola Láser/Handheld
           </button>
         </div>
-      ) : (
-        <div className={`mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 transition-all duration-300 ${confirmedSeals ? 'max-w-xs p-5 space-y-4' : 'max-w-md p-8 space-y-6'}`}>
+      </div>
+
+      {/* Grid Responsivo de Dos Columnas para Tablets, Handhelds y Celulares */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        {/* Columna Principal: Escáner Activo (Cámara o Panel Láser) */}
+        <div className="lg:col-span-7 space-y-4 w-full">
           
-          {/* Scanner Element remains in DOM to avoid html5-qrcode mount/unmount crashes, but is visually hidden when confirmed */}
-          <div className={confirmedSeals ? "hidden" : "space-y-6"}>
-            <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
-            
-            {scanResult && !error && (
-              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-center">
-                <p className="text-emerald-800 font-black text-[10px] uppercase tracking-widest">Sello Identificado</p>
-                <p className="text-emerald-600 font-mono font-bold text-xl">{scanResult}</p>
-              </div>
-            )}
-
-            {error && (
-              <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center space-y-2">
-                <p className="text-red-800 font-black text-[10px] uppercase tracking-widest">Error de Validación</p>
-                <p className="text-red-600 text-[10px] font-bold leading-relaxed">{error}</p>
-                <div className="flex gap-2 pt-1">
-                  <button onClick={() => { setScanResult(null); setError(null); setScannerSessionId(prev => prev + 1); }} className="flex-1 bg-red-100 hover:bg-red-200 text-red-800 text-[10px] font-black uppercase py-2 rounded-lg transition-all">Reintentar</button>
-                  <button onClick={handleCloseCamera} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-black uppercase py-2 rounded-lg transition-all">Cerrar</button>
+          {scannerMode === 'camera' ? (
+            // --- MODO CÁMARA (Para Celulares y Tablets tradicionales) ---
+            !isCameraActive ? (
+              <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-6 text-center space-y-6">
+                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
                 </div>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Cámara en Pausa</h4>
+                  <p className="text-[10px] text-slate-500 font-bold leading-relaxed uppercase tracking-wide">
+                    La cámara se ha desactivado para ahorrar batería. Reactívela para continuar escaneando precintos.
+                  </p>
+                </div>
+                <button 
+                  onClick={handleStartCamera} 
+                  className="w-full bg-custom-blue hover:bg-black text-white font-black py-3.5 rounded-2xl transition-all shadow-lg text-xs uppercase tracking-widest"
+                >
+                  Activar Cámara / Iniciar Escaneo
+                </button>
               </div>
-            )}
+            ) : (
+              <div className={`bg-white rounded-3xl shadow-xl border border-slate-200 p-4 sm:p-6 transition-all duration-300 ${confirmedSeals ? 'max-w-md mx-auto space-y-4' : 'space-y-4'}`}>
+                
+                {/* Elemento del escáner en el DOM */}
+                <div className={confirmedSeals ? "hidden" : "space-y-4"}>
+                  <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
+                  
+                  {scanResult && !error && (
+                    <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-center">
+                      <p className="text-emerald-800 font-black text-[9px] uppercase tracking-widest">Sello Identificado</p>
+                      <p className="text-emerald-600 font-mono font-bold text-lg">{scanResult}</p>
+                    </div>
+                  )}
 
-            <div className="pt-4 border-t border-slate-100 flex flex-col gap-4 items-center">
-              <div className="flex items-center flex-col gap-1.5">
-                <ICONS.History className="w-5 h-5 text-slate-300" />
-                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] text-center">Posicione el código QR del precinto frente a la cámara para confirmar su salida de fábrica</p>
-              </div>
+                  {error && (
+                    <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center space-y-2">
+                      <p className="text-red-800 font-black text-[10px] uppercase tracking-widest">Error de Validación</p>
+                      <p className="text-red-600 text-[10px] font-bold leading-relaxed">{error}</p>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={() => { setScanResult(null); setError(null); setScannerSessionId(prev => prev + 1); }} className="flex-1 bg-red-100 hover:bg-red-200 text-red-800 text-[10px] font-black uppercase py-2 rounded-lg transition-all">Reintentar</button>
+                        <button onClick={handleCloseCamera} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-black uppercase py-2 rounded-lg transition-all">Cerrar</button>
+                      </div>
+                    </div>
+                  )}
 
-              <button 
-                onClick={handleCloseCamera}
-                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-slate-200"
-              >
-                Cerrar Ventana de Cámara
-              </button>
-            </div>
-          </div>
+                  <div className="pt-3 border-t border-slate-100 flex flex-col gap-3.5 items-center">
+                    <div className="flex items-center flex-col gap-1">
+                      <ICONS.History className="w-4 h-4 text-slate-300" />
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider text-center">Enfoque el código QR de salida para validar y despachar automáticamente</p>
+                    </div>
 
-          {/* Ventana/Vista de Confirmación de Salida Exitosa */}
-          {confirmedSeals && (
-            <div className="space-y-4 animate-in zoom-in duration-200 text-center">
-              <div className="w-12 h-12 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
-                <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-
-              <div className="space-y-0.5">
-                <h4 className="text-base font-black text-emerald-800 uppercase tracking-tight">Salida Confirmada</h4>
-                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-                  {confirmedSeals.ids.length > 1 ? `${confirmedSeals.ids.length} Movimientos Registrados` : 'Movimiento de Precinto Registrado'}
-                </p>
-              </div>
-
-              <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 text-left space-y-1.5 text-xs">
-                <div className="flex flex-col gap-1 text-[11px] border-b border-slate-200 pb-1.5">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-black">IDs Sellos Despachados:</span>
-                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar pt-1">
-                    {confirmedSeals.ids.map(id => (
-                      <span key={id} className="font-mono font-black text-[10px] bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded border border-slate-300">
-                        {id}
-                      </span>
-                    ))}
+                    <button 
+                      onClick={handleCloseCamera}
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-slate-200"
+                    >
+                      Cerrar Ventana de Cámara
+                    </button>
                   </div>
                 </div>
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
-                  <span className="font-black bg-slate-900 text-white px-1.5 py-0.5 rounded text-[9px] uppercase">
-                    {confirmedSeals.types.join(', ')}
-                  </span>
-                </div>
-                {confirmedSeals.plate && confirmedSeals.plate !== '-' && (
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
-                    <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeals.plate}</span>
+
+                {/* Confirmación de Salida Exitosa (Modo Cámara) */}
+                {confirmedSeals && (
+                  <div className="space-y-4 animate-in zoom-in duration-200 text-center">
+                    <div className="w-12 h-12 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                      <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      <h4 className="text-base font-black text-emerald-800 uppercase tracking-tight">Salida Confirmada</h4>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                        {confirmedSeals.ids.length > 1 ? `${confirmedSeals.ids.length} Movimientos Registrados` : 'Movimiento de Sello Registrado'}
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 text-left space-y-1.5 text-xs">
+                      <div className="flex flex-col gap-1 text-[11px] border-b border-slate-200 pb-1.5">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-black">IDs Sellos Despachados:</span>
+                        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar pt-1">
+                          {confirmedSeals.ids.map((id: string) => (
+                            <span key={id} className="font-mono font-black text-[10px] bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded border border-slate-300">
+                              {id}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
+                        <span className="font-black bg-slate-900 text-white px-1.5 py-0.5 rounded text-[9px] uppercase">
+                          {confirmedSeals.types.join(', ')}
+                        </span>
+                      </div>
+                      {confirmedSeals.plate && confirmedSeals.plate !== '-' && (
+                        <div className="flex justify-between items-center text-[11px]">
+                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
+                          <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeals.plate}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between items-center text-[11px]">
+                        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
+                        <span className="font-medium text-slate-600">{confirmedSeals.time}</span>
+                      </div>
+                    </div>
+
+                    {/* Información de Contenedor Asociado */}
+                    <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-0.5">
+                      <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
+                      <p className="text-sm font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeals.containerId}</p>
+                    </div>
+
+                    {countdown !== null && (
+                      <div className="text-[10px] text-emerald-600 font-black uppercase tracking-wider py-1 animate-pulse">
+                        Próximo escaneo en {countdown} segundos...
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      <button 
+                        onClick={handleNextScan} 
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 rounded-xl transition-all shadow-md text-[10px] uppercase tracking-widest"
+                      >
+                        Escanear Siguiente
+                      </button>
+                      <button 
+                        onClick={handleCloseCamera} 
+                        className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black py-2.5 rounded-xl transition-all border border-slate-200 text-[10px] uppercase tracking-widest"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
                   </div>
                 )}
-                <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
-                  <span className="font-medium text-slate-600">{confirmedSeals.time}</span>
-                </div>
-              </div>
 
-              {/* Parte inferior: Información de ID Contenedor con mensaje de ID Verificado */}
-              <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-0.5">
-                <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
-                <p className="text-sm font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeals.containerId}</p>
-                
-                <div className="flex items-center justify-center gap-1 text-emerald-600 font-bold">
-                  <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </div>
+            )
+          ) : (
+            // --- MODO GATILLO/LECTOR LÁSER (Especializado para Handhelds Zebra/Honeywell y alta velocidad) ---
+            <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-5 sm:p-6 space-y-5">
+              
+              <div className="flex items-center gap-3 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+                <div className="bg-custom-blue/10 w-10 h-10 rounded-full flex items-center justify-center text-custom-blue">
+                  <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 12h.008v.008H12V12z" />
                   </svg>
-                  <span className="text-[9px] font-black uppercase tracking-widest">IDs Verificados ({confirmedSeals.ids.length})</span>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="inline-flex items-center gap-1.5 text-[9px] bg-emerald-100 text-emerald-800 font-black uppercase px-2 py-0.5 rounded-full tracking-wider animate-pulse">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Canal Activo
+                  </span>
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide leading-relaxed">
+                    Integrado con gatillo de terminal industrial. Los precintos leídos se validan y despachan de inmediato.
+                  </p>
                 </div>
               </div>
 
-              {countdown !== null && (
-                <div className="text-[10px] text-emerald-600 font-black uppercase tracking-wider py-1 animate-pulse">
-                  Siguiente escaneo en {countdown} segundos...
+              {/* Caja de Enfoque y Entrada del Escáner */}
+              <form onSubmit={handleLaserSubmit} className="space-y-4">
+                <div 
+                  onClick={() => inputRef.current?.focus()}
+                  className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                    isInputFocused 
+                      ? 'border-emerald-400 bg-emerald-50/20 shadow-inner' 
+                      : 'border-amber-400 bg-amber-50/20'
+                  }`}
+                >
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={laserInput}
+                    onChange={(e) => setLaserInput(e.target.value)}
+                    onFocus={() => setIsInputFocused(true)}
+                    onBlur={() => setIsInputFocused(false)}
+                    placeholder="Escanee con la pistola o ingrese ID..."
+                    className="w-full opacity-0 absolute pointer-events-none"
+                    autoFocus
+                  />
+                  
+                  {isInputFocused ? (
+                    <div className="space-y-3">
+                      <div className="text-emerald-600 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                        Listo para Lectura (Gatillo Físico)
+                      </div>
+                      <p className="font-mono text-2xl font-black text-slate-800 tracking-widest select-none">
+                        {laserInput ? laserInput.toUpperCase() : "--- --- ---"}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        Presione el disparador físico del terminal para capturar el código.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="text-amber-700 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-1">
+                        <svg className="w-4 h-4 text-amber-500 animate-bounce" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        Lector Desvanecido
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={() => inputRef.current?.focus()}
+                        className="bg-amber-500 hover:bg-black text-white text-[10px] font-black uppercase px-6 py-2.5 rounded-xl transition-all tracking-wider shadow-sm"
+                      >
+                        Haga Clic para Re-enfocar Lector
+                      </button>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        El enfoque de la terminal se desvió. Toque el botón antes de volver a escanear.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
 
-              <div className="flex gap-2 pt-2">
-                <button 
-                  onClick={handleNextScan} 
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 rounded-xl transition-all shadow-md text-[10px] uppercase tracking-widest"
-                >
-                  Escanear Siguiente
-                </button>
-                <button 
-                  onClick={handleCloseCamera} 
-                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black py-2.5 rounded-xl transition-all border border-slate-200 text-[10px] uppercase tracking-widest"
-                >
-                  Cerrar
-                </button>
-              </div>
+                {/* Entrada Manual Auxiliar en caso de códigos dañados */}
+                <div className="space-y-2">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">¿Sello Dañado? Ingrese ID Manualmente:</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      placeholder="ID DE PRECINTO" 
+                      value={laserInput}
+                      onChange={(e) => setLaserInput(e.target.value.toUpperCase())}
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono font-black text-custom-blue uppercase outline-none focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
+                    />
+                    <button 
+                      type="submit" 
+                      disabled={!laserInput.trim()}
+                      className="bg-custom-blue hover:bg-black disabled:bg-slate-200 text-white px-5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-md"
+                    >
+                      Despachar
+                    </button>
+                  </div>
+                </div>
+              </form>
+
             </div>
           )}
 
         </div>
-      )}
+
+        {/* Columna Lateral: Historial de Escaneos de la Sesión Actual */}
+        <div className="lg:col-span-5 space-y-4 w-full">
+          
+          <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-5 sm:p-6 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="space-y-0.5">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Registro de Sesión</h4>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Precintos leídos en esta carga</p>
+              </div>
+              <span className="bg-custom-blue/10 text-custom-blue px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                {recentScans.filter(s => s.success).length} Despachados
+              </span>
+            </div>
+
+            {recentScans.length > 0 ? (
+              <div className="space-y-2 max-h-72 lg:max-h-[380px] overflow-y-auto custom-scrollbar pr-1">
+                {recentScans.map((scan, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs transition-all ${
+                      justScannedId === scan.id 
+                        ? 'bg-emerald-100 border-emerald-400 scale-[1.02] shadow-md' 
+                        : scan.success 
+                        ? 'bg-slate-50/80 border-slate-100' 
+                        : 'bg-red-50 border-red-100'
+                    }`}
+                  >
+                    <div className="space-y-1 flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-black text-[11px] text-slate-900 tracking-wide truncate uppercase">
+                          {scan.id}
+                        </span>
+                        <span className="text-[8px] text-slate-400 font-bold">
+                          {scan.time}
+                        </span>
+                      </div>
+                      <p className={`text-[9px] font-bold uppercase leading-tight truncate ${scan.success ? 'text-slate-500' : 'text-red-600'}`}>
+                        {scan.details}
+                      </p>
+                    </div>
+
+                    <div>
+                      {scan.success ? (
+                        <div className="bg-emerald-100 border border-emerald-200 w-6 h-6 rounded-full flex items-center justify-center text-emerald-600">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3.5" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <div className="bg-red-100 border border-red-200 w-6 h-6 rounded-full flex items-center justify-center text-red-600">
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="3.5" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-12 text-center text-slate-400 border border-dashed border-slate-100 rounded-2xl">
+                <svg className="w-10 h-10 mx-auto text-slate-200 mb-2" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 leading-relaxed">
+                  Ningún precinto leído todavía.<br />Los escaneos de esta sesión aparecerán aquí.
+                </p>
+              </div>
+            )}
+
+            {recentScans.length > 0 && (
+              <button 
+                onClick={() => setRecentScans([])}
+                className="w-full text-slate-400 hover:text-slate-700 font-bold py-1.5 rounded-lg transition-all text-[9px] uppercase tracking-widest border border-slate-100 text-center block bg-slate-50/50"
+              >
+                Vaciar Registro de Sesión
+              </button>
+            )}
+          </div>
+
+        </div>
+
+      </div>
+
     </div>
   );
 };
