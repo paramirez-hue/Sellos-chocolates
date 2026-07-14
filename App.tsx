@@ -742,6 +742,546 @@ const MovementsView: React.FC<{
   );
 };
 
+const ReprintView: React.FC<{
+  seals: Seal[];
+  user: User;
+  appSettings: AppSettings;
+  setToast: (toast: { message: string, type: 'success' | 'error' } | null) => void;
+}> = ({ seals, user, appSettings, setToast }) => {
+  const [searchPlate, setSearchPlate] = useState('');
+  const [singleLabel, setSingleLabel] = useState(true);
+  
+  const getSealReprintDetails = (seal: Seal) => {
+    const details = {
+      vehiclePlate: seal.vehiclePlate || '',
+      trailerContainer: seal.trailerContainer || '',
+      containerId: seal.containerId || '',
+      deliveredSub: seal.deliveredSub || '',
+      requester: seal.requester || '',
+      date: seal.lastMovement || '',
+    };
+
+    for (const h of seal.history) {
+      if (!details.vehiclePlate) {
+        const match = h.details.match(/PLACA:\s*([^|]+)/i);
+        if (match) details.vehiclePlate = match[1].trim();
+      }
+      if (!details.trailerContainer) {
+        const match = h.details.match(/REMOLQUE:\s*([^|]+)/i);
+        if (match) details.trailerContainer = match[1].trim();
+      }
+      if (!details.containerId) {
+        const match = h.details.match(/CONTENEDOR:\s*([^|]+)/i);
+        if (match) details.containerId = match[1].trim();
+      }
+      if (!details.deliveredSub) {
+        const match = h.details.match(/TRANSPORTE:\s*([^|]+)/i);
+        if (match) details.deliveredSub = match[1].trim();
+      }
+      if (!details.requester) {
+        const match = h.details.match(/RECEPTOR:\s*([^|]+)/i);
+        if (match) details.requester = match[1].trim();
+      }
+    }
+    return details;
+  };
+
+  const foundSeals = useMemo(() => {
+    if (!searchPlate.trim()) return [];
+    const query = searchPlate.trim().toUpperCase();
+    return seals.filter(s => {
+      if (s.city?.toUpperCase() !== user.city?.toUpperCase()) return false;
+      const rep = getSealReprintDetails(s);
+      return rep.vehiclePlate.toUpperCase() === query;
+    });
+  }, [seals, searchPlate, user.city]);
+
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    setSelectedIds(foundSeals.map(s => s.id));
+  }, [foundSeals]);
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(foundSeals.map(s => s.id));
+    } else {
+      setSelectedIds([]);
+    }
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchPlate.trim()) return;
+    if (foundSeals.length === 0) {
+      alert(`No se encontraron precintos asociados a la placa "${searchPlate.toUpperCase()}" en la sede ${user.city}.`);
+    }
+  };
+
+  const handleReprint = () => {
+    const sealsToPrint = foundSeals.filter(s => selectedIds.includes(s.id));
+    if (sealsToPrint.length === 0) {
+      alert('Por favor, seleccione al menos un precinto para reimprimir.');
+      return;
+    }
+
+    const commonRep = getSealReprintDetails(sealsToPrint[0]);
+
+    try {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        const logoHtml = appSettings.logo 
+          ? `<img src="${appSettings.logo}" style="height: 10mm; max-width: 45mm; object-fit: contain;" referrerPolicy="no-referrer" />`
+          : `<div style="font-size: 14px; font-weight: 900; color: #003594; letter-spacing: 0.05em; text-transform: uppercase;">${appSettings.title.toUpperCase()}</div>`;
+
+        let labelsHtml = "";
+        if (singleLabel && sealsToPrint.length > 1) {
+          const combinedIds = sealsToPrint.map(s => s.id).join(', ');
+          const combinedTypes = Array.from(new Set(sealsToPrint.map(s => s.type))).join(', ');
+          const qrData = `SELLO: ${combinedIds}
+TIPO: ${combinedTypes}
+PLACA: ${commonRep.vehiclePlate || '-'}
+REMOLQUE: ${commonRep.trailerContainer || '-'}
+CONTENEDOR: ${commonRep.containerId || '-'}
+TRANSPORTE: ${commonRep.deliveredSub || '-'}
+RECEPTOR: ${commonRep.requester || '-'}
+FECHA: ${commonRep.date || new Date().toLocaleString('es-ES')}`;
+          const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+          labelsHtml = `
+            <div class="label-tag">
+              <div class="label-header">
+                <div class="logo-area">
+                  ${logoHtml}
+                </div>
+                <div class="placa-title">
+                  PLACA: ${commonRep.vehiclePlate ? commonRep.vehiclePlate.toUpperCase() : '-'}
+                </div>
+                <div class="badge-area">
+                  <span class="label-badge">LOTE (${sealsToPrint.length})</span>
+                </div>
+              </div>
+
+              <div class="label-body" style="display: flex; flex-direction: row; align-items: center; justify-content: space-between; width: 100%; height: 36mm; gap: 4mm;">
+                <div class="qr-box" style="width: 32mm; height: 32mm; flex-shrink: 0;">
+                  <img src="${qrUrl}" class="qr-image" referrerPolicy="no-referrer" />
+                </div>
+                <div class="batch-details" style="flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: left; font-size: 10px; line-height: 1.3;">
+                  <div style="font-weight: 900; border-bottom: 1px solid #000; padding-bottom: 2px; margin-bottom: 4px; font-size: 11px; text-transform: uppercase;">Detalle de Sellos (RE-IMPRESIÓN):</div>
+                  <div class="seals-list" style="font-family: monospace; font-weight: 900; font-size: 10px; color: #000; word-break: break-all; max-height: 22mm; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;">
+                    ${combinedIds}
+                  </div>
+                  <div style="margin-top: 4px; font-size: 8px; font-weight: bold; color: #555;">TIPO: ${combinedTypes.toUpperCase()}</div>
+                </div>
+              </div>
+
+              <div class="label-footer">
+                <span class="footer-system">AUXILIARES | RE-IMPRESIÓN</span>
+                <span class="footer-date">${commonRep.date || new Date().toLocaleString('es-ES')}</span>
+              </div>
+            </div>
+          `;
+        } else {
+          labelsHtml = sealsToPrint.map((seal) => {
+            const rep = getSealReprintDetails(seal);
+            const qrData = `SELLO: ${seal.id}
+TIPO: ${seal.type}
+PLACA: ${rep.vehiclePlate || '-'}
+REMOLQUE: ${rep.trailerContainer || '-'}
+CONTENEDOR: ${rep.containerId || '-'}
+TRANSPORTE: ${rep.deliveredSub || '-'}
+RECEPTOR: ${rep.requester || '-'}
+FECHA: ${rep.date || new Date().toLocaleString('es-ES')}`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+            return `
+              <div class="label-tag">
+                <div class="label-header">
+                  <div class="logo-area">
+                    ${logoHtml}
+                  </div>
+                  <div class="placa-title">
+                    PLACA: ${rep.vehiclePlate ? rep.vehiclePlate.toUpperCase() : '-'}
+                  </div>
+                  <div class="badge-area">
+                    <span class="label-badge">${seal.type.toUpperCase()}</span>
+                  </div>
+                </div>
+
+                <div class="label-body">
+                  <div class="qr-box">
+                    <img src="${qrUrl}" class="qr-image" referrerPolicy="no-referrer" />
+                  </div>
+                </div>
+
+                <div class="label-footer">
+                  <span class="footer-system">AUXILIARES | RE-IMPRESIÓN</span>
+                  <span class="footer-date">${rep.date || new Date().toLocaleString('es-ES')}</span>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Re-impresión de Etiquetas - ${appSettings.title}</title>
+              <style>
+                * {
+                  box-sizing: border-box;
+                }
+                body {
+                  margin: 0;
+                  padding: 20px;
+                  background-color: #f1f5f9;
+                  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                }
+                .label-tag {
+                  width: 100mm;
+                  height: 60mm;
+                  border: 2px dashed #64748b;
+                  padding: 3mm 4mm;
+                  margin: 15px auto;
+                  background: white;
+                  display: flex;
+                  flex-direction: column;
+                  justify-content: space-between;
+                  page-break-after: always;
+                  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+                  position: relative;
+                  box-sizing: border-box;
+                  color: black;
+                }
+                .label-header {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  border-bottom: 2px solid #000;
+                  padding-bottom: 1.5mm;
+                  margin-bottom: 2mm;
+                  height: 12mm;
+                }
+                .logo-area {
+                  display: flex;
+                  align-items: center;
+                  max-width: 24mm;
+                  flex-shrink: 0;
+                }
+                .logo-area img {
+                  height: 8mm;
+                  max-width: 24mm;
+                  object-fit: contain;
+                }
+                .placa-title {
+                  font-size: 16px;
+                  font-weight: 900;
+                  color: #000;
+                  text-align: center;
+                  flex: 1;
+                  font-family: inherit;
+                  letter-spacing: -0.01em;
+                  white-space: nowrap;
+                }
+                .badge-area {
+                  display: flex;
+                  justify-content: flex-end;
+                  align-items: center;
+                  max-width: 20mm;
+                  flex-shrink: 0;
+                }
+                .label-badge {
+                  font-size: 8.5px;
+                  font-weight: 900;
+                  background: #000;
+                  color: #fff;
+                  padding: 2px 7px;
+                  border-radius: 3px;
+                  letter-spacing: 0.04em;
+                  text-transform: uppercase;
+                  display: inline-block;
+                }
+                .label-body {
+                  display: flex;
+                  flex: 1;
+                  align-items: center;
+                  justify-content: center;
+                  height: 36mm;
+                }
+                .qr-box {
+                  width: 32mm;
+                  height: 32mm;
+                  border: 1px solid #e4e4e7;
+                  padding: 1.2mm;
+                  background: #fff;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                }
+                .qr-image {
+                  width: 100%;
+                  height: 100%;
+                  object-fit: contain;
+                }
+                .label-footer {
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  border-top: 2px solid #000;
+                  padding-top: 1mm;
+                  margin-top: 2mm;
+                  height: 5mm;
+                }
+                .footer-system {
+                  font-size: 7.5px;
+                  font-weight: 800;
+                  color: #000;
+                  letter-spacing: 0.03em;
+                }
+                .footer-date {
+                  font-size: 7.5px;
+                  font-weight: 800;
+                  color: #000;
+                }
+                
+                @media print {
+                  @page {
+                    size: 100mm 60mm;
+                    margin: 0;
+                  }
+                  body {
+                    background: white;
+                    padding: 0;
+                    margin: 0;
+                  }
+                  .label-tag {
+                    width: 100mm;
+                    height: 60mm;
+                    border: none;
+                    margin: 0;
+                    box-shadow: none;
+                    page-break-after: always;
+                  }
+                  .label-tag:last-child {
+                    page-break-after: avoid;
+                  }
+                  .no-print {
+                    display: none !important;
+                  }
+                }
+                
+                .print-bar {
+                  background: #1e293b;
+                  color: white;
+                  padding: 12px 24px;
+                  display: flex;
+                  justify-content: space-between;
+                  align-items: center;
+                  max-width: 100mm;
+                  margin: 0 auto 10px auto;
+                  border-radius: 8px;
+                  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+                }
+                .btn-action {
+                  background: ${appSettings.themeColor || '#003594'};
+                  color: white;
+                  border: none;
+                  padding: 6px 14px;
+                  border-radius: 6px;
+                  font-size: 11px;
+                  font-weight: 800;
+                  text-transform: uppercase;
+                  cursor: pointer;
+                  letter-spacing: 0.05em;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="print-bar no-print">
+                <span style="font-size: 11px; font-weight: 600;">Re-impresión lista (${singleLabel && sealsToPrint.length > 1 ? '1' : sealsToPrint.length} etiquetas)</span>
+                <button class="btn-action" onclick="window.print()">Imprimir de nuevo</button>
+              </div>
+
+              <div id="labels-container">
+                ${labelsHtml}
+              </div>
+
+              <script>
+                window.addEventListener('load', function() {
+                  var images = Array.from(document.querySelectorAll('img'));
+                  var promises = images.map(function(img) {
+                    if (img.complete) return Promise.resolve();
+                    return new Promise(function(resolve) {
+                      img.onload = resolve;
+                      img.onerror = resolve;
+                    });
+                  });
+
+                  Promise.all(promises).then(function() {
+                    setTimeout(function() {
+                      window.print();
+                      setTimeout(function() {
+                        window.close();
+                      }, 200);
+                    }, 400);
+                  });
+                });
+              </script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        setToast({ message: "Re-impresión iniciada exitosamente", type: 'success' });
+      }
+    } catch (err) {
+      console.error("Error al abrir ventana de re-impresión:", err);
+      setToast({ message: "Fallo al abrir re-impresión. Compruebe los permisos de ventanas emergentes.", type: 'error' });
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex justify-between items-end">
+        <div>
+          <h3 className="text-2xl font-black text-custom-blue uppercase tracking-tighter italic">Re-impresión por Placa</h3>
+          <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Re-generar etiquetas dañadas o perdidas</p>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8 max-w-2xl">
+        <form onSubmit={handleSearch} className="flex flex-col gap-4">
+          <label className="text-[10px] font-black text-custom-blue uppercase tracking-widest">Ingrese la placa del vehículo (Ej: ABC-123)</label>
+          <div className="flex gap-4">
+            <div className="flex-1 relative">
+              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-slate-400">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+              </div>
+              <input 
+                type="text" 
+                placeholder="PLACA DEL VEHÍCULO" 
+                className="w-full pl-12 pr-4 py-4 border border-gray-200 bg-gray-50 rounded-xl text-lg font-mono font-black text-custom-blue focus:bg-white focus:ring-4 focus:ring-blue-100 outline-none transition-all uppercase" 
+                value={searchPlate} 
+                onChange={(e) => setSearchPlate(e.target.value.toUpperCase())} 
+              />
+            </div>
+            <button type="submit" className="bg-custom-blue text-white px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-custom-blue-dark transition-all shadow-lg flex items-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
+              Buscar
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {searchPlate.trim() && foundSeals.length > 0 && (
+        <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">Precintos Asociados a la Placa: <span className="text-custom-blue">{searchPlate.toUpperCase()}</span></h4>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Sede: {user.city} | Encontrados: {foundSeals.length}</p>
+              </div>
+              
+              {foundSeals.length > 1 && (
+                <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 p-2.5 px-4 rounded-xl">
+                  <input 
+                    type="checkbox" 
+                    id="toggle-reprint-single" 
+                    checked={singleLabel} 
+                    onChange={e => setSingleLabel(e.target.checked)} 
+                    className="w-4 h-4 text-custom-blue rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <label htmlFor="toggle-reprint-single" className="text-[10px] font-black text-custom-blue uppercase tracking-wider cursor-pointer select-none">
+                    Generar una sola etiqueta para todo el lote
+                  </label>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-slate-150 rounded-2xl overflow-hidden overflow-x-auto">
+              <table className="w-full text-left text-[11px]">
+                <thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-black uppercase tracking-widest">
+                  <tr>
+                    <th className="px-6 py-4 w-12 text-center">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.length === foundSeals.length}
+                        onChange={e => handleSelectAll(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-300 text-custom-blue focus:ring-blue-500 cursor-pointer"
+                      />
+                    </th>
+                    <th className="px-6 py-4 text-custom-blue">ID Precinto</th>
+                    <th className="px-6 py-4 text-custom-blue">Estado</th>
+                    <th className="px-6 py-4 text-custom-blue">Tipo</th>
+                    <th className="px-6 py-4 text-custom-blue">Receptor / Autoriza</th>
+                    <th className="px-6 py-4 text-custom-blue">Nro Remolque</th>
+                    <th className="px-6 py-4 text-custom-blue">Fecha Movimiento</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-bold text-slate-900 text-xs">
+                  {foundSeals.map(s => {
+                    const details = getSealReprintDetails(s);
+                    const isSelected = selectedIds.includes(s.id);
+                    return (
+                      <tr 
+                        key={s.id} 
+                        onClick={() => handleToggleSelect(s.id)}
+                        className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/50'}`}
+                      >
+                        <td className="px-6 py-4 text-center" onClick={e => e.stopPropagation()}>
+                          <input 
+                            type="checkbox" 
+                            checked={isSelected}
+                            onChange={() => handleToggleSelect(s.id)}
+                            className="w-4 h-4 rounded border-slate-300 text-custom-blue focus:ring-blue-500 cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-6 py-4 font-black font-mono text-[13px] text-custom-blue uppercase">{s.id}</td>
+                        <td className="px-6 py-4">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${getStatusStyles(s.status).split('icon-bg-')[0]}`}>
+                            {s.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-600 font-black uppercase text-[10px]">{s.type}</td>
+                        <td className="px-6 py-4 text-slate-700 uppercase font-bold">{details.requester || '-'}</td>
+                        <td className="px-6 py-4 text-slate-700 font-mono font-bold uppercase">{details.trailerContainer || '-'}</td>
+                        <td className="px-6 py-4 text-slate-500 text-[10px]">{details.date || s.lastMovement}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <button 
+                onClick={handleReprint}
+                disabled={selectedIds.length === 0}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white font-black px-12 py-4 rounded-xl text-[11px] uppercase tracking-[0.2em] transition-all shadow-lg hover:-translate-y-0.5 active:scale-95 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 1.258a1.79 1.79 0 0 1-1.761 2.112H7.872a1.79 1.79 0 0 1-1.761-2.113L6.34 18m11.32 0a2.25 2.25 0 0 0 2.25-2.25V11.56a2.25 2.25 0 0 0-2.25-2.25H4.5A2.25 2.25 0 0 0 2.25 11.56v4.19c0 .955.6 1.776 1.485 2.062M16.5 6V3.75a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 7.5 3.75V6m9 0H7.5" /></svg>
+                Re-imprimir {selectedIds.length} {selectedIds.length === 1 ? 'Etiqueta' : 'Etiquetas'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {searchPlate.trim() && foundSeals.length === 0 && (
+        <div className="bg-slate-100 border border-slate-200 rounded-2xl p-12 text-center max-w-2xl">
+          <svg className="w-12 h-12 mx-auto text-slate-400 mb-3" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+          <p className="font-black text-slate-600 uppercase text-xs tracking-wider mb-1">Sin Resultados Encontrados</p>
+          <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wide">No hay registros de precintos para la placa <span className="text-custom-blue font-black">"{searchPlate}"</span> en la sede {user.city}.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DespachoScannerView: React.FC<{ 
   seals: Seal[]; 
   onConfirmExit: (sealIds: string | string[]) => void;
@@ -2094,6 +2634,10 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
         lastMovement: now, 
         entryUser: currentUser?.fullName || 'SISTEMA', 
         containerId: targetStatus === SealStatus.SALIDA_FABRICA ? (moveData.containerId || s.containerId || '-') : s.containerId,
+        vehiclePlate: targetStatus === SealStatus.SALIDA_FABRICA ? (moveData.vehiclePlate || s.vehiclePlate || '-') : s.vehiclePlate,
+        trailerContainer: targetStatus === SealStatus.SALIDA_FABRICA ? (moveData.trailerContainer || s.trailerContainer || '-') : s.trailerContainer,
+        deliveredSub: targetStatus === SealStatus.SALIDA_FABRICA ? (moveData.deliveredSub || s.deliveredSub || '-') : s.deliveredSub,
+        requester: targetStatus === SealStatus.SALIDA_FABRICA ? (moveData.requester || s.requester || '-') : s.requester,
         history: [{ date: now, fromStatus: s.status, toStatus: targetStatus, user: currentUser?.fullName || 'SISTEMA', details: selectedSeals.length > 1 ? `[MASIVO] ${details}` : details }, ...s.history] 
       }; 
       return s; 
@@ -2135,9 +2679,13 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
                 <button onClick={() => { setActiveTab('inventory'); setIsSearchPerformed(false); }} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'inventory' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Search className="w-5 h-5" /> Inventario</button>
                 <button onClick={() => setActiveTab('movements')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'movements' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Move className="w-5 h-5" /> Movimientos</button>
                 <button onClick={() => setActiveTab('traceability')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'traceability' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.History className="w-5 h-5" /> Trazabilidad</button>
+                <button onClick={() => setActiveTab('reprint')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'reprint' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 1.258a1.79 1.79 0 0 1-1.761 2.112H7.872a1.79 1.79 0 0 1-1.761-2.113L6.34 18m11.32 0a2.25 2.25 0 0 0 2.25-2.25V11.56a2.25 2.25 0 0 0-2.25-2.25H4.5A2.25 2.25 0 0 0 2.25 11.56v4.19c0 .955.6 1.776 1.485 2.062M16.5 6V3.75a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 7.5 3.75V6m9 0H7.5" /></svg> Re-impresión</button>
               </>
             ) : (
-              <button onClick={() => setActiveTab('despacho')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'despacho' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Move className="w-5 h-5" /> Escáner Salida</button>
+              <>
+                <button onClick={() => setActiveTab('despacho')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'despacho' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><ICONS.Move className="w-5 h-5" /> Escáner Salida</button>
+                <button onClick={() => setActiveTab('reprint')} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-xs uppercase tracking-widest ${activeTab === 'reprint' ? 'bg-custom-blue text-white shadow-xl translate-x-1' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}><svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0 .229 1.258a1.79 1.79 0 0 1-1.761 2.112H7.872a1.79 1.79 0 0 1-1.761-2.113L6.34 18m11.32 0a2.25 2.25 0 0 0 2.25-2.25V11.56a2.25 2.25 0 0 0-2.25-2.25H4.5A2.25 2.25 0 0 0 2.25 11.56v4.19c0 .955.6 1.776 1.485 2.062M16.5 6V3.75a1.5 1.5 0 0 0-1.5-1.5h-6A1.5 1.5 0 0 0 7.5 3.75V6m9 0H7.5" /></svg> Re-impresión</button>
+              </>
             )}
             {currentUser.role === UserRole.ADMIN && (
               <>
@@ -2161,6 +2709,7 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
           {activeTab === 'movements' && <MovementsView seals={seals} onInitiateMove={initiateMovement} user={currentUser} />}
           {activeTab === 'traceability' && <TraceabilityView seals={seals} user={currentUser} />}
           {activeTab === 'despacho' && <DespachoScannerView seals={seals} onConfirmExit={handleConfirmExit} user={currentUser} setActiveTab={setActiveTab} />}
+          {activeTab === 'reprint' && <ReprintView seals={seals} user={currentUser} appSettings={appSettings} setToast={setToast} />}
           {activeTab === 'users' && currentUser.role === UserRole.ADMIN && <UserManagement users={users} cities={cities} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
           {activeTab === 'cities' && currentUser.role === UserRole.ADMIN && <CityManagement cities={cities} onAddCity={handleAddCity} onDeleteCity={handleDeleteCity} onUpdateCity={handleUpdateCity} />}
           {activeTab === 'settings' && currentUser.role === UserRole.ADMIN && <SettingsView settings={appSettings} onUpdate={handleUpdateSettings} onRestoreDB={handleRestoreDB} />}

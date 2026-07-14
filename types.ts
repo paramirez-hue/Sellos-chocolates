@@ -55,6 +55,10 @@ export interface Seal {
   notes: string;
   city: string; // Ciudad a la que pertenece el precinto
   history: MovementHistory[];
+  vehiclePlate?: string;
+  trailerContainer?: string;
+  deliveredSub?: string;
+  requester?: string;
 }
 
 export interface FilterOptions {
