@@ -86,7 +86,17 @@ export const ApiService = {
         .select('*');
 
       if (error) throw error;
-      return data as User[];
+      
+      // Map fullname (lowercase from database) or fullName to frontend User structure
+      const mapped = (data || []).map((u: any) => {
+        const { fullname, ...rest } = u;
+        return {
+          ...rest,
+          fullName: fullname || u.fullName || ''
+        } as User;
+      });
+
+      return mapped;
     } catch (error) {
       console.error('Supabase Fetch Error (Users):', error);
       return JSON.parse(localStorage.getItem('selloUsers') || '[]');
@@ -95,9 +105,18 @@ export const ApiService = {
 
   async saveUsers(users: User[]): Promise<{ success: boolean; errorMessage?: string }> {
     try {
+      // Map fullName (frontend) to fullname (database)
+      const mapped = users.map(user => {
+        const { fullName, ...rest } = user;
+        return {
+          ...rest,
+          fullname: fullName || ''
+        };
+      });
+
       const { error } = await supabase
         .from('users')
-        .upsert(users, { onConflict: 'id' });
+        .upsert(mapped, { onConflict: 'id' });
       
       if (error) {
         console.error('Supabase Save Error (Users) - database returned error object:', error);
