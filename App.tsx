@@ -746,12 +746,18 @@ const DespachoScannerView: React.FC<{
   seals: Seal[]; 
   onConfirmExit: (sealIds: string | string[]) => void;
   user: User;
-}> = ({ seals, onConfirmExit, user }) => {
+  setActiveTab?: (tab: string) => void;
+}> = ({ seals, onConfirmExit, user, setActiveTab }) => {
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmedSeals, setConfirmedSeals] = useState<{ ids: string[]; containerId: string; types: string[]; plate: string; time: string } | null>(null);
+  const [isCameraActive, setIsCameraActive] = useState(true);
+  const [scannerSessionId, setScannerSessionId] = useState(0);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   useEffect(() => {
+    if (!isCameraActive) return;
+
     const scanner = new Html5QrcodeScanner(
       "reader",
       { fps: 10, qrbox: { width: 250, height: 250 } },
@@ -842,13 +848,58 @@ const DespachoScannerView: React.FC<{
     return () => {
       scanner.clear().catch(e => console.warn("Scanner clear error", e));
     };
-  }, [seals, onConfirmExit]);
+  }, [seals, onConfirmExit, scannerSessionId, isCameraActive]);
 
-  const handleCloseConfirmation = () => {
+  // Manejo de redirección automática al escáner tras confirmación exitosa
+  useEffect(() => {
+    if (!confirmedSeals) {
+      setCountdown(null);
+      return;
+    }
+
+    setCountdown(3);
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(interval);
+          setConfirmedSeals(null);
+          setScanResult(null);
+          setError(null);
+          setScannerSessionId(s => s + 1);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [confirmedSeals]);
+
+  const handleNextScan = () => {
     setConfirmedSeals(null);
     setScanResult(null);
     setError(null);
-    window.location.reload();
+    setScannerSessionId(prev => prev + 1);
+  };
+
+  const handleCloseCamera = () => {
+    if (user.role !== UserRole.AUXILIAR_SALIDA && setActiveTab) {
+      setActiveTab('inventory');
+    } else {
+      setIsCameraActive(false);
+      setConfirmedSeals(null);
+      setScanResult(null);
+      setError(null);
+    }
+  };
+
+  const handleStartCamera = () => {
+    setIsCameraActive(true);
+    setConfirmedSeals(null);
+    setScanResult(null);
+    setError(null);
+    setScannerSessionId(prev => prev + 1);
   };
 
   return (
@@ -858,101 +909,149 @@ const DespachoScannerView: React.FC<{
         <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Sede Operativa: <span className="text-custom-blue">{user.city}</span></p>
       </div>
 
-      <div className={`mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 transition-all duration-300 ${confirmedSeals ? 'max-w-xs p-5 space-y-4' : 'max-w-md p-8 space-y-6'}`}>
-        
-        {/* Scanner Element remains in DOM to avoid html5-qrcode mount/unmount crashes, but is visually hidden when confirmed */}
-        <div className={confirmedSeals ? "hidden" : "space-y-6"}>
-          <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
-          
-          {scanResult && !error && (
-            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-center">
-              <p className="text-emerald-800 font-black text-[10px] uppercase tracking-widest">Sello Identificado</p>
-              <p className="text-emerald-600 font-mono font-bold text-xl">{scanResult}</p>
-            </div>
-          )}
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center space-y-2">
-              <p className="text-red-800 font-black text-[10px] uppercase tracking-widest">Error de Validación</p>
-              <p className="text-red-600 text-[10px] font-bold leading-relaxed">{error}</p>
-              <button onClick={() => { setScanResult(null); setError(null); window.location.reload(); }} className="text-[10px] font-black text-custom-blue uppercase underline">Reintentar Escaneo</button>
-            </div>
-          )}
-
-          <div className="pt-4 border-t border-slate-100 flex items-center flex-col gap-2">
-            <ICONS.History className="w-5 h-5 text-slate-300" />
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] text-center">Posicione el código QR del precinto frente a la cámara para confirmar su salida de fábrica</p>
+      {!isCameraActive ? (
+        <div className="max-w-md mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 p-8 text-center space-y-6">
+          <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
           </div>
+          <div className="space-y-2">
+            <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight">Cámara en Pausa</h4>
+            <p className="text-[10px] text-slate-500 font-bold leading-relaxed uppercase tracking-wide">
+              La cámara se ha desactivado para ahorrar batería. Reactívela para continuar escaneando precintos.
+            </p>
+          </div>
+          <button 
+            onClick={handleStartCamera} 
+            className="w-full bg-custom-blue hover:bg-black text-white font-black py-3.5 rounded-2xl transition-all shadow-lg text-xs uppercase tracking-widest"
+          >
+            Activar Cámara / Iniciar Escaneo
+          </button>
         </div>
+      ) : (
+        <div className={`mx-auto bg-white rounded-3xl shadow-xl border border-slate-200 transition-all duration-300 ${confirmedSeals ? 'max-w-xs p-5 space-y-4' : 'max-w-md p-8 space-y-6'}`}>
+          
+          {/* Scanner Element remains in DOM to avoid html5-qrcode mount/unmount crashes, but is visually hidden when confirmed */}
+          <div className={confirmedSeals ? "hidden" : "space-y-6"}>
+            <div id="reader" className="overflow-hidden rounded-2xl border-2 border-slate-100 bg-slate-50"></div>
+            
+            {scanResult && !error && (
+              <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-center">
+                <p className="text-emerald-800 font-black text-[10px] uppercase tracking-widest">Sello Identificado</p>
+                <p className="text-emerald-600 font-mono font-bold text-xl">{scanResult}</p>
+              </div>
+            )}
 
-        {/* Ventana/Vista de Confirmación de Salida Exitosa */}
-        {confirmedSeals && (
-          <div className="space-y-4 animate-in zoom-in duration-200 text-center">
-            <div className="w-12 h-12 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
-              <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-
-            <div className="space-y-0.5">
-              <h4 className="text-base font-black text-emerald-800 uppercase tracking-tight">Salida Confirmada</h4>
-              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
-                {confirmedSeals.ids.length > 1 ? `${confirmedSeals.ids.length} Movimientos Registrados` : 'Movimiento de Precinto Registrado'}
-              </p>
-            </div>
-
-            <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 text-left space-y-1.5 text-xs">
-              <div className="flex flex-col gap-1 text-[11px] border-b border-slate-200 pb-1.5">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-black">IDs Sellos Despachados:</span>
-                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar pt-1">
-                  {confirmedSeals.ids.map(id => (
-                    <span key={id} className="font-mono font-black text-[10px] bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded border border-slate-300">
-                      {id}
-                    </span>
-                  ))}
+            {error && (
+              <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-center space-y-2">
+                <p className="text-red-800 font-black text-[10px] uppercase tracking-widest">Error de Validación</p>
+                <p className="text-red-600 text-[10px] font-bold leading-relaxed">{error}</p>
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => { setScanResult(null); setError(null); setScannerSessionId(prev => prev + 1); }} className="flex-1 bg-red-100 hover:bg-red-200 text-red-800 text-[10px] font-black uppercase py-2 rounded-lg transition-all">Reintentar</button>
+                  <button onClick={handleCloseCamera} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 text-[10px] font-black uppercase py-2 rounded-lg transition-all">Cerrar</button>
                 </div>
               </div>
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
-                <span className="font-black bg-slate-900 text-white px-1.5 py-0.5 rounded text-[9px] uppercase">
-                  {confirmedSeals.types.join(', ')}
-                </span>
+            )}
+
+            <div className="pt-4 border-t border-slate-100 flex flex-col gap-4 items-center">
+              <div className="flex items-center flex-col gap-1.5">
+                <ICONS.History className="w-5 h-5 text-slate-300" />
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] text-center">Posicione el código QR del precinto frente a la cámara para confirmar su salida de fábrica</p>
               </div>
-              {confirmedSeals.plate && confirmedSeals.plate !== '-' && (
+
+              <button 
+                onClick={handleCloseCamera}
+                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-2.5 rounded-xl transition-all text-[10px] uppercase tracking-widest border border-slate-200"
+              >
+                Cerrar Ventana de Cámara
+              </button>
+            </div>
+          </div>
+
+          {/* Ventana/Vista de Confirmación de Salida Exitosa */}
+          {confirmedSeals && (
+            <div className="space-y-4 animate-in zoom-in duration-200 text-center">
+              <div className="w-12 h-12 bg-emerald-100 border border-emerald-200 rounded-full flex items-center justify-center mx-auto shadow-sm">
+                <svg className="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+
+              <div className="space-y-0.5">
+                <h4 className="text-base font-black text-emerald-800 uppercase tracking-tight">Salida Confirmada</h4>
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                  {confirmedSeals.ids.length > 1 ? `${confirmedSeals.ids.length} Movimientos Registrados` : 'Movimiento de Precinto Registrado'}
+                </p>
+              </div>
+
+              <div className="bg-slate-50 rounded-xl border border-slate-100 p-3 text-left space-y-1.5 text-xs">
+                <div className="flex flex-col gap-1 text-[11px] border-b border-slate-200 pb-1.5">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider font-black">IDs Sellos Despachados:</span>
+                  <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto custom-scrollbar pt-1">
+                    {confirmedSeals.ids.map(id => (
+                      <span key={id} className="font-mono font-black text-[10px] bg-slate-200 text-slate-800 px-1.5 py-0.5 rounded border border-slate-300">
+                        {id}
+                      </span>
+                    ))}
+                  </div>
+                </div>
                 <div className="flex justify-between items-center text-[11px]">
-                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
-                  <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeals.plate}</span>
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Tipo Sello:</span>
+                  <span className="font-black bg-slate-900 text-white px-1.5 py-0.5 rounded text-[9px] uppercase">
+                    {confirmedSeals.types.join(', ')}
+                  </span>
+                </div>
+                {confirmedSeals.plate && confirmedSeals.plate !== '-' && (
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Placa Vehículo:</span>
+                    <span className="font-mono font-black text-slate-950 uppercase">{confirmedSeals.plate}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center text-[11px]">
+                  <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
+                  <span className="font-medium text-slate-600">{confirmedSeals.time}</span>
+                </div>
+              </div>
+
+              {/* Parte inferior: Información de ID Contenedor con mensaje de ID Verificado */}
+              <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-0.5">
+                <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
+                <p className="text-sm font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeals.containerId}</p>
+                
+                <div className="flex items-center justify-center gap-1 text-emerald-600 font-bold">
+                  <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-[9px] font-black uppercase tracking-widest">IDs Verificados ({confirmedSeals.ids.length})</span>
+                </div>
+              </div>
+
+              {countdown !== null && (
+                <div className="text-[10px] text-emerald-600 font-black uppercase tracking-wider py-1 animate-pulse">
+                  Siguiente escaneo en {countdown} segundos...
                 </div>
               )}
-              <div className="flex justify-between items-center text-[11px]">
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Hora Salida:</span>
-                <span className="font-medium text-slate-600">{confirmedSeals.time}</span>
+
+              <div className="flex gap-2 pt-2">
+                <button 
+                  onClick={handleNextScan} 
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 rounded-xl transition-all shadow-md text-[10px] uppercase tracking-widest"
+                >
+                  Escanear Siguiente
+                </button>
+                <button 
+                  onClick={handleCloseCamera} 
+                  className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black py-2.5 rounded-xl transition-all border border-slate-200 text-[10px] uppercase tracking-widest"
+                >
+                  Cerrar
+                </button>
               </div>
             </div>
+          )}
 
-            {/* Parte inferior: Información de ID Contenedor con mensaje de ID Verificado */}
-            <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3 space-y-0.5">
-              <span className="text-[8px] font-black text-emerald-800 uppercase tracking-widest block">Contenedor Asociado</span>
-              <p className="text-sm font-mono font-black text-emerald-950 tracking-wider uppercase">{confirmedSeals.containerId}</p>
-              
-              <div className="flex items-center justify-center gap-1 text-emerald-600 font-bold">
-                <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-[9px] font-black uppercase tracking-widest">IDs Verificados ({confirmedSeals.ids.length})</span>
-              </div>
-            </div>
-
-            <button 
-              onClick={handleCloseConfirmation} 
-              className="w-full bg-custom-blue hover:bg-black text-white font-black py-2.5 rounded-xl transition-all shadow-md text-xs uppercase tracking-widest"
-            >
-              Cerrar
-            </button>
-          </div>
-        )}
-
-      </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1712,7 +1811,7 @@ FECHA: ${new Date().toLocaleString('es-ES')}`;
           {activeTab === 'inventory' && <div className="space-y-8 animate-in fade-in duration-500"><div className="flex flex-wrap items-center justify-between bg-white p-5 rounded-3xl border border-slate-200 shadow-sm gap-4"><div className="flex flex-wrap gap-4"><button onClick={() => setIsNewSealModalOpen(true)} className="bg-custom-blue text-white px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-custom-blue-dark transition-all shadow-lg">Nuevo Sello</button><button onClick={() => fileExcelRef.current?.click()} className="bg-white text-custom-blue border border-custom-blue px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"><ICONS.Import className="w-4 h-4" /> Carga Masiva</button><button onClick={() => setIsSearchModalOpen(true)} className="bg-white text-custom-blue border border-custom-blue px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 flex items-center gap-2"><ICONS.Search className="w-4 h-4" /> Búsqueda</button></div><button onClick={handleInventoryDownload} className="bg-emerald-600 text-white px-7 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg"><ICONS.Excel className="w-4 h-4" /> Exportar Inventario</button><input ref={fileExcelRef} type="file" accept=".xlsx, .xls, .csv" onChange={handleExcelImport} className="hidden" /></div>{isSearchPerformed ? <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-300"><div className="flex items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Resultados: <span className="text-custom-blue">{filteredSeals.length} precintos encontrados</span></p><button onClick={() => setIsSearchPerformed(false)} className="text-[10px] font-black text-custom-blue uppercase hover:underline">Limpiar Resultados</button></div><div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden overflow-x-auto"><table className="w-full text-left text-[11px]"><thead className="bg-slate-50 border-b border-slate-100 text-slate-500 font-black uppercase tracking-widest"><tr><th className="px-8 py-6 text-custom-blue">ID Sello</th><th className="px-8 py-6 text-custom-blue">Estado Logístico</th><th className="px-8 py-6 text-custom-blue">Tipo</th><th className="px-8 py-6 text-custom-blue">Operador</th><th className="px-8 py-6 text-custom-blue">Ciudad</th>{isDeleteModeActive && currentUser.role === UserRole.ADMIN && <th className="px-8 py-6 text-red-600 text-right">Acciones</th>}</tr></thead><tbody className="divide-y divide-slate-100 font-bold text-slate-900">{filteredSeals.length > 0 ? filteredSeals.map(s => (<tr key={s.id} onClick={() => !isDeleteModeActive && initiateMovement([s], s.status)} className={`group transition-all ${!isDeleteModeActive ? 'hover:bg-blue-50/30 cursor-pointer' : ''}`}><td className="px-8 py-5 font-black font-mono text-[14px] text-custom-blue group-hover:text-blue-600 uppercase">{s.id}</td><td className="px-8 py-5"><span className={`px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-widest transition-all ${getStatusStyles(s.status).split('icon-bg-')[0]}`}>{s.status.replace('_', ' ')}</span></td><td className="px-8 py-5 text-slate-700 font-bold uppercase text-[9px]">{s.type}</td><td className="px-8 py-5 uppercase font-black text-[10px] text-slate-700">{s.entryUser}</td><td className="px-8 py-5 text-custom-blue font-black text-[10px] uppercase">{s.city}</td>{isDeleteModeActive && currentUser.role === UserRole.ADMIN && (<td className="px-8 py-5 text-right"><button onClick={(e) => { e.stopPropagation(); handleDeleteSeal(s.id); }} className="p-2 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar Precinto Permanentemente"><ICONS.Trash className="w-4 h-4" /></button></td>)}</tr>)) : (<tr><td colSpan={isDeleteModeActive ? 6 : 5} className="px-8 py-20 text-center font-bold text-slate-400 uppercase tracking-widest">No se encontraron registros</td></tr>)}</tbody></table></div></div> : <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-32 text-center space-y-4"><div className="bg-white w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-sm"><ICONS.Search className="w-8 h-8 text-blue-100 opacity-50" /></div><p className="font-black text-slate-300 uppercase text-xs tracking-[0.3em]">Utilice el botón "Búsqueda" para consultar el inventario de {currentUser.city}</p></div>}</div>}
           {activeTab === 'movements' && <MovementsView seals={seals} onInitiateMove={initiateMovement} user={currentUser} />}
           {activeTab === 'traceability' && <TraceabilityView seals={seals} user={currentUser} />}
-          {activeTab === 'despacho' && <DespachoScannerView seals={seals} onConfirmExit={handleConfirmExit} user={currentUser} />}
+          {activeTab === 'despacho' && <DespachoScannerView seals={seals} onConfirmExit={handleConfirmExit} user={currentUser} setActiveTab={setActiveTab} />}
           {activeTab === 'users' && currentUser.role === UserRole.ADMIN && <UserManagement users={users} cities={cities} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
           {activeTab === 'cities' && currentUser.role === UserRole.ADMIN && <CityManagement cities={cities} onAddCity={handleAddCity} onDeleteCity={handleDeleteCity} onUpdateCity={handleUpdateCity} />}
           {activeTab === 'settings' && currentUser.role === UserRole.ADMIN && <SettingsView settings={appSettings} onUpdate={handleUpdateSettings} onRestoreDB={handleRestoreDB} />}
